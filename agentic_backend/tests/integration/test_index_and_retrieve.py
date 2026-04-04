@@ -19,7 +19,6 @@ class MockStore(MongoStore):
         return
 
 
-
 def _settings() -> AppSettings:
     return AppSettings(
         mongodb_uri="mongodb://mock",
@@ -33,8 +32,8 @@ def _settings() -> AppSettings:
         index_top_k_default=5,
         rerank_enabled=True,
         debug_log_vectors=False,
+        index_import_symbols=False,
     )
-
 
 
 def test_full_index_and_retrieve(tmp_path: Path) -> None:
@@ -54,7 +53,6 @@ def test_full_index_and_retrieve(tmp_path: Path) -> None:
     out = retriever.query("r1", "main", "add", top_k=3)
     assert out["chunks"]
     assert out["chunks"][0]["file_path"] == "mod.py"
-
 
 
 def test_incremental_runs(tmp_path: Path) -> None:

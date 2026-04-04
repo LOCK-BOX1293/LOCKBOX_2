@@ -95,6 +95,7 @@ def retrieve_query(payload: RetrieveRequest) -> QueryResponse:
             top_k=payload.top_k,
             lang=payload.lang,
             path_prefix=payload.path_prefix,
+            include_tests=payload.include_tests,
             include_graph=True,
         )
         return QueryResponse.model_validate(result)
@@ -127,6 +128,7 @@ def graph_overview(
     top_k: int = 8,
     lang: str | None = None,
     path_prefix: str | None = None,
+    include_tests: bool = False,
 ) -> dict:
     """
     Return graph payload for UI.
@@ -150,6 +152,7 @@ def graph_overview(
             top_k=top_k,
             lang=lang,
             path_prefix=path_prefix,
+            include_tests=include_tests,
         )
 
     return _build_full_graph(repo_id=repo_id, branch=branch)
@@ -386,8 +389,8 @@ def edge_context(
 
 def _build_full_graph(repo_id: str, branch: str) -> dict:
     # Prevent visual overload: keep an important, bounded subset for "full" view.
-    MAX_NODES = 260
-    MAX_EDGES = 420
+    MAX_NODES = 140
+    MAX_EDGES = 220
 
     file_docs = list(
         store.files.find(
@@ -425,8 +428,7 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
     # Filter out import nodes for initial overview (major source of noise)
     important = [s for s in all_symbols if (s.get("symbol_type") or "") != "import"]
 
-    # Keep at most first function per file plus all class/module symbols.
-    first_function_per_file: set[str] = set()
+    # Keep class/module symbols only for high-level overview.
     chosen: list[dict] = []
     important_sorted = sorted(
         important,
@@ -440,11 +442,8 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
 
     for s in important_sorted:
         t = (s.get("symbol_type") or "").lower()
-        fp = str(s.get("file_path") or "")
-        if t == "function":
-            if fp in first_function_per_file:
-                continue
-            first_function_per_file.add(fp)
+        if t not in {"class", "module"}:
+            continue
         chosen.append(s)
 
     max_symbol_nodes = max(40, MAX_NODES - len(file_paths))
@@ -537,7 +536,7 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
             "raw_symbol_count": len(all_symbols),
             "filtered_symbol_count": len(chosen),
             "truncated": len(all_symbols) > len(chosen),
-            "strategy": "files + class/module + first-function-per-file (imports hidden)",
+            "strategy": "files + class/module only (imports/functions hidden in overview)",
         },
     }
 
@@ -549,7 +548,11 @@ def _build_focused_graph(
     top_k: int,
     lang: str | None,
     path_prefix: str | None,
+    include_tests: bool,
 ) -> dict:
+    MAX_FOCUSED_NODES = 180
+    MAX_FOCUSED_EDGES = 260
+
     result = retriever.query(
         repo_id=repo_id,
         branch=branch,
@@ -557,6 +560,7 @@ def _build_focused_graph(
         top_k=top_k,
         lang=lang,
         path_prefix=path_prefix,
+        include_tests=include_tests,
         include_graph=True,
     )
     chunks = result.get("chunks", [])
@@ -656,16 +660,39 @@ def _build_focused_graph(
         key = (e.get("source"), e.get("target"), e.get("type"))
         uniq[key] = e
 
+    # Focused graph caps: preserve highest relevance nodes first.
+    if len(nodes) > MAX_FOCUSED_NODES:
+        file_nodes = [n for n in nodes if n.get("type") == "file"]
+        sym_nodes = [n for n in nodes if n.get("type") == "symbol"]
+        sym_nodes.sort(
+            key=lambda n: (
+                -float(n.get("relevance_score", 0.0)),
+                str(n.get("label") or ""),
+            )
+        )
+        nodes = file_nodes + sym_nodes[: max(0, MAX_FOCUSED_NODES - len(file_nodes))]
+
+    edge_list = list(uniq.values())
+    if len(edge_list) > MAX_FOCUSED_EDGES:
+        edge_list = edge_list[:MAX_FOCUSED_EDGES]
+
+    kept_ids = {n.get("id") for n in nodes}
+    edge_list = [
+        e
+        for e in edge_list
+        if e.get("source") in kept_ids and e.get("target") in kept_ids
+    ]
+
     return {
         "mode": "focused",
         "repo_id": repo_id,
         "branch": branch,
         "query": q,
         "nodes": nodes,
-        "edges": list(uniq.values()),
+        "edges": edge_list,
         "meta": {
             "node_count": len(nodes),
-            "edge_count": len(uniq),
+            "edge_count": len(edge_list),
             "retrieval_confidence": float(result.get("confidence", 0.0)),
         },
     }

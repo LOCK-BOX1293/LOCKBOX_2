@@ -16,6 +16,7 @@ class RetrieveRequest(BaseModel):
     top_k: int = 8
     lang: str | None = None
     path_prefix: str | None = None
+    include_tests: bool = False
 
 
 class GraphNodeRequest(BaseModel):

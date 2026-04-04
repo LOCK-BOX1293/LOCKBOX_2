@@ -53,7 +53,7 @@ export async function runFullIndex(repoPath: string, repoId: string, branch: str
   });
 }
 
-export async function fetchGraphOverview(repoId: string, branch: string = 'main', mode: 'full' | 'focused' = 'full', query?: string) {
+export async function fetchGraphOverview(repoId: string, branch: string = 'main', mode: 'full' | 'focused' = 'full', query?: string, includeTests: boolean = false) {
   const base = getResolvedApiBase();
   const url = new URL(`${base}/graph/overview`);
   url.searchParams.append('repo_id', repoId);
@@ -61,6 +61,9 @@ export async function fetchGraphOverview(repoId: string, branch: string = 'main'
   url.searchParams.append('mode', mode);
   if (query && mode === 'focused') {
     url.searchParams.append('q', query);
+  }
+  if (includeTests) {
+    url.searchParams.append('include_tests', 'true');
   }
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error('Failed to fetch overview');

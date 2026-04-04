@@ -31,9 +31,14 @@ class HybridRetriever:
         lang: str | None = None,
         path_prefix: str | None = None,
         include_graph: bool = True,
+        include_tests: bool = False,
     ) -> dict:
-        vector_hits = self._vector_search(repo_id, branch, q, top_k, lang, path_prefix)
-        text_hits = self._text_search(repo_id, branch, q, top_k, lang, path_prefix)
+        vector_hits = self._vector_search(
+            repo_id, branch, q, top_k, lang, path_prefix, include_tests
+        )
+        text_hits = self._text_search(
+            repo_id, branch, q, top_k, lang, path_prefix, include_tests
+        )
         fused = self._fuse(vector_hits, text_hits, top_k)
 
         if include_graph:
@@ -72,6 +77,7 @@ class HybridRetriever:
         top_k: int,
         lang: str | None,
         path_prefix: str | None,
+        include_tests: bool,
     ) -> list[dict]:
         q_vec = self.embedder.embed_with_retry([q])[0]
         pipeline = [
@@ -130,7 +136,7 @@ class HybridRetriever:
         except Exception:
             docs = self._vector_fallback(repo_id, branch, q_vec)
 
-        docs = self._apply_filters(docs, lang, path_prefix)
+        docs = self._apply_filters(docs, lang, path_prefix, include_tests)
         for d in docs:
             d["reason"] = "vector-match"
         return docs
@@ -185,6 +191,7 @@ class HybridRetriever:
         top_k: int,
         lang: str | None,
         path_prefix: str | None,
+        include_tests: bool,
     ) -> list[dict]:
         def _fallback_text() -> list[dict]:
             rex = re.compile(re.escape(q), re.IGNORECASE)
@@ -238,20 +245,41 @@ class HybridRetriever:
         except Exception:
             docs = _fallback_text()
 
-        docs = self._apply_filters(docs, lang, path_prefix)
+        docs = self._apply_filters(docs, lang, path_prefix, include_tests)
         for d in docs:
             d["reason"] = "text-match"
         return docs
 
     def _apply_filters(
-        self, docs: list[dict], lang: str | None, path_prefix: str | None
+        self,
+        docs: list[dict],
+        lang: str | None,
+        path_prefix: str | None,
+        include_tests: bool,
     ) -> list[dict]:
         out = docs
         if lang:
             out = [d for d in out if d.get("language") == lang]
         if path_prefix:
             out = [d for d in out if d.get("file_path", "").startswith(path_prefix)]
+        if not include_tests:
+            out = [
+                d
+                for d in out
+                if not self._is_test_path((d.get("file_path") or "").lower())
+            ]
         return out
+
+    @staticmethod
+    def _is_test_path(path: str) -> bool:
+        return (
+            path.startswith("tests/")
+            or "/tests/" in path
+            or path.startswith("test_")
+            or "/test_" in path
+            or path.endswith("_test.py")
+            or path.endswith("test.py")
+        )
 
     def _fuse(
         self, vector_hits: list[dict], text_hits: list[dict], top_k: int
@@ -328,12 +356,56 @@ class HybridRetriever:
         q_terms = set(re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", q.lower()))
         if not q_terms:
             return docs
+        query_mentions_test = any(t in q_terms for t in {"test", "tests", "pytest"})
+        technical_query = any(
+            t in q_terms
+            for t in {
+                "how",
+                "where",
+                "call",
+                "calls",
+                "called",
+                "function",
+                "method",
+                "class",
+                "service",
+                "orchestrator",
+            }
+        )
+
         for d in docs:
             tokens = set(
                 re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", d.get("content", "").lower())
             )
             overlap = len(q_terms.intersection(tokens))
-            d["score"] = float(d.get("score", 0.0)) + 0.01 * math.log1p(overlap)
+
+            path = (d.get("file_path") or "").lower()
+            bonus = 0.0
+            if path.startswith("src/") or "/src/" in path:
+                bonus += 0.02
+
+            is_test_path = (
+                path.startswith("tests/")
+                or "/tests/" in path
+                or path.startswith("test_")
+                or "/test_" in path
+                or path.endswith("_test.py")
+                or path.endswith("test.py")
+            )
+            if is_test_path and not query_mentions_test:
+                bonus -= 0.06
+
+            is_docs_like = path.endswith((".md", ".rst", ".yml", ".yaml", ".json"))
+            if is_docs_like and technical_query and not query_mentions_test:
+                bonus -= 0.03
+
+            if (
+                "def test_" in (d.get("content", "").lower())
+                and not query_mentions_test
+            ):
+                bonus -= 0.03
+
+            d["score"] = float(d.get("score", 0.0)) + 0.01 * math.log1p(overlap) + bonus
             if overlap:
                 d["reason"] = f"{d.get('reason', 'match')}+rerank"
         docs.sort(key=lambda x: x.get("score", 0.0), reverse=True)

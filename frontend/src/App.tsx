@@ -24,6 +24,7 @@ function App() {
   const [repoPathInput, setRepoPathInput] = useState('');
   const [newRepoId, setNewRepoId] = useState('');
   const [repoError, setRepoError] = useState<string | null>(null);
+  const [includeTests, setIncludeTests] = useState(false);
 
   const loadRepos = async () => {
     try {
@@ -58,7 +59,7 @@ function App() {
     try {
       setLoading(true);
       const activeRepo = selectedRepo || repoId;
-      const data = await fetchGraphOverview(activeRepo, branch, mode, forcedQuery || query);
+      const data = await fetchGraphOverview(activeRepo, branch, mode, forcedQuery || query, includeTests);
       setGraphData(data);
       setSelectedNodeId(null);
       setPanelData(null);
@@ -81,7 +82,7 @@ function App() {
       if (ask?.graph?.nodes && ask?.graph?.edges) {
         setGraphData({ nodes: ask.graph.nodes, edges: ask.graph.edges });
       } else {
-        const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query);
+        const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query, includeTests);
         setGraphData(focused);
       }
 
@@ -163,6 +164,15 @@ function App() {
         >
           Refresh Repos
         </button>
+
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 12 }}>
+          <input
+            type="checkbox"
+            checked={includeTests}
+            onChange={(e) => setIncludeTests(e.target.checked)}
+          />
+          include tests/docs in focused search
+        </label>
 
         <span style={{ color: 'var(--text-muted)' }}>or bring your own:</span>
         <input
