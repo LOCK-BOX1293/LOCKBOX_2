@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-PROMPTS_DIR = ROOT_DIR.parent / "prompts"
+PROMPTS_DIR = ROOT_DIR / "prompts"
 
 load_dotenv(ROOT_DIR.parent / ".env")
 
@@ -21,7 +21,6 @@ class Settings:
     mongodb_uri: str | None
     mongodb_db: str
     retrieval_top_k: int
-
 
 
 def get_settings() -> Settings:

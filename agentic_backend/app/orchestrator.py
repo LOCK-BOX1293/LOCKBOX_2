@@ -1,24 +1,38 @@
 from __future__ import annotations
 
-from app.agents.specialists import ExplanationAgent, VisualMapperAgent, parse_answer_payload
+from app.agents.specialists import (
+    ExplanationAgent,
+    VisualMapperAgent,
+    parse_answer_payload,
+)
 from app.config import get_settings
 from app.llm.gemini import GeminiClient
-from app.memory.session_store import InMemorySessionStore, MongoSessionStore, SessionStore
+from app.memory.session_store import (
+    InMemorySessionStore,
+    MongoSessionStore,
+    SessionStore,
+)
 from app.models import AskRequest, AskResponse, SessionEvent
-from app.retrieval.providers import EmptyRetrievalProvider, HttpRetrievalProvider, RetrievalProvider
+from app.retrieval.providers import (
+    HttpRetrievalProvider,
+    LocalHybridRetrievalProvider,
+    RetrievalProvider,
+)
 
 
 class Orchestrator:
     def __init__(self) -> None:
         settings = get_settings()
         self.settings = settings
-        self.llm = GeminiClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+        self.llm = GeminiClient(
+            api_key=settings.gemini_api_key, model=settings.gemini_model
+        )
         self.explainer = ExplanationAgent(self.llm)
         self.visual_mapper = VisualMapperAgent()
         self.retrieval: RetrievalProvider = (
             HttpRetrievalProvider(settings.retrieval_service_url)
             if settings.retrieval_service_url
-            else EmptyRetrievalProvider()
+            else LocalHybridRetrievalProvider()
         )
         self.sessions: SessionStore = (
             MongoSessionStore(settings.mongodb_uri, settings.mongodb_db)
@@ -40,7 +54,9 @@ class Orchestrator:
 
     def ask(self, req: AskRequest) -> AskResponse:
         intent = self._infer_intent(req.query)
-        history_events = self.sessions.recent_context(req.project_id, req.session_id, limit=6)
+        history_events = self.sessions.recent_context(
+            req.project_id, req.session_id, limit=6
+        )
         history_text = "\n".join([f"{e.role}: {e.content}" for e in history_events])
 
         retrieval_result = self.retrieval.retrieve(
@@ -49,13 +65,32 @@ class Orchestrator:
             top_k=self.settings.retrieval_top_k,
         )
 
-        raw_answer = self.explainer.explain(
-            query=req.query,
-            user_role=req.user_role,
-            chunks=retrieval_result.chunks,
-            history=history_text,
+        try:
+            raw_answer = self.explainer.explain(
+                query=req.query,
+                user_role=req.user_role,
+                chunks=retrieval_result.chunks,
+                history=history_text,
+            )
+        except Exception as exc:
+            # Graceful fallback: still provide retrieval-grounded response when LLM
+            # generation is unavailable (quota/network/model issues).
+            lines = [
+                "LLM generation unavailable; returning retrieval-grounded context.",
+                f"Reason: {str(exc)}",
+                "",
+                "Relevant evidence:",
+            ]
+            for i, c in enumerate(retrieval_result.chunks[:5], start=1):
+                lines.append(
+                    f"[{i}] {c.file_path}:{c.start_line}-{c.end_line} score={c.score:.4f}"
+                )
+                snippet = c.text.strip().replace("\n", " ")
+                lines.append(f"    {snippet[:220]}")
+            raw_answer = "\n".join(lines)
+        answer, confidence, citations = parse_answer_payload(
+            raw_answer, retrieval_result.chunks
         )
-        answer, confidence, citations = parse_answer_payload(raw_answer, retrieval_result.chunks)
         graph = self.visual_mapper.build_graph(retrieval_result.chunks)
 
         self.sessions.append_event(

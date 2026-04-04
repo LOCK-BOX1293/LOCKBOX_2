@@ -51,28 +51,107 @@ class MongoStore:
         return self.db.retrieval_runs
 
     def ensure_standard_indexes(self) -> None:
-        def _safe_index(coll: Collection, keys: list[tuple[str, int]], **kwargs: Any) -> None:
+        def _safe_index(
+            coll: Collection, keys: list[tuple[str, int]], **kwargs: Any
+        ) -> None:
             try:
                 coll.create_index(keys, **kwargs)
             except OperationFailure as exc:
                 msg = str(exc)
                 # Seeded DBs may already have equivalent indexes with different names.
-                if "IndexOptionsConflict" in msg or "already exists with a different name" in msg:
+                if (
+                    "IndexOptionsConflict" in msg
+                    or "already exists with a different name" in msg
+                ):
                     return
                 raise
 
-        _safe_index(self.chunks, [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING)], name="ix_chunks_repo_branch_path")
-        _safe_index(self.chunks, [("repo_id", ASCENDING), ("branch", ASCENDING), ("content_hash", ASCENDING)], name="ix_chunks_repo_branch_hash")
-        _safe_index(self.symbols, [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING), ("name", ASCENDING)], name="ix_symbols_repo_branch_path_name")
-        _safe_index(self.files, [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING), ("commit_sha", ASCENDING)], name="ix_files_repo_branch_path_commit")
-        _safe_index(self.index_jobs, [("repo_id", ASCENDING), ("started_at", DESCENDING)], name="ix_jobs_repo_started")
+        _safe_index(
+            self.chunks,
+            [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING)],
+            name="ix_chunks_repo_branch_path",
+        )
+        _safe_index(
+            self.chunks,
+            [
+                ("repo_id", ASCENDING),
+                ("branch", ASCENDING),
+                ("content_hash", ASCENDING),
+            ],
+            name="ix_chunks_repo_branch_hash",
+        )
+        _safe_index(
+            self.symbols,
+            [
+                ("repo_id", ASCENDING),
+                ("branch", ASCENDING),
+                ("file_path", ASCENDING),
+                ("name", ASCENDING),
+            ],
+            name="ix_symbols_repo_branch_path_name",
+        )
+        _safe_index(
+            self.files,
+            [
+                ("repo_id", ASCENDING),
+                ("branch", ASCENDING),
+                ("file_path", ASCENDING),
+                ("commit_sha", ASCENDING),
+            ],
+            name="ix_files_repo_branch_path_commit",
+        )
+        _safe_index(
+            self.index_jobs,
+            [("repo_id", ASCENDING), ("started_at", DESCENDING)],
+            name="ix_jobs_repo_started",
+        )
 
-        _safe_index(self.files, [("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("file_path", ASCENDING)], unique=True, name="ux_files_repo_branch_commit_path")
-        _safe_index(self.chunks, [("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("chunk_id", ASCENDING)], unique=True, name="ux_chunks_repo_branch_commit_chunk")
-        _safe_index(self.symbols, [("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("symbol_id", ASCENDING)], unique=True, name="ux_symbols_repo_branch_commit_symbol")
+        _safe_index(
+            self.files,
+            [
+                ("repo_id", ASCENDING),
+                ("branch", ASCENDING),
+                ("commit_sha", ASCENDING),
+                ("file_path", ASCENDING),
+            ],
+            unique=True,
+            name="ux_files_repo_branch_commit_path",
+        )
+        _safe_index(
+            self.chunks,
+            [
+                ("repo_id", ASCENDING),
+                ("branch", ASCENDING),
+                ("commit_sha", ASCENDING),
+                ("chunk_id", ASCENDING),
+            ],
+            unique=True,
+            name="ux_chunks_repo_branch_commit_chunk",
+        )
+        _safe_index(
+            self.symbols,
+            [
+                ("repo_id", ASCENDING),
+                ("branch", ASCENDING),
+                ("commit_sha", ASCENDING),
+                ("symbol_id", ASCENDING),
+            ],
+            unique=True,
+            name="ux_symbols_repo_branch_commit_symbol",
+        )
 
-        _safe_index(self.sessions, [("ttl_expires_at", ASCENDING)], expireAfterSeconds=0, name="ttl_sessions")
-        _safe_index(self.index_jobs, [("finished_at", ASCENDING)], expireAfterSeconds=60 * 60 * 24 * 14, name="ttl_jobs_14d")
+        _safe_index(
+            self.sessions,
+            [("ttl_expires_at", ASCENDING)],
+            expireAfterSeconds=0,
+            name="ttl_sessions",
+        )
+        _safe_index(
+            self.index_jobs,
+            [("finished_at", ASCENDING)],
+            expireAfterSeconds=60 * 60 * 24 * 14,
+            name="ttl_jobs_14d",
+        )
 
     def ensure_search_indexes(self, embedding_dim: int) -> None:
         try:
@@ -129,14 +208,32 @@ class MongoStore:
             pass
 
     def validate_embedding_dimension(self, expected_dim: int) -> None:
-        sample = self.embeddings.find_one({}, {"vector": 1})
-        if not sample or "vector" not in sample:
+        sample = self.embeddings.find_one(
+            {"embedding_dim": expected_dim}, {"vector": 1, "embedding_dim": 1}
+        )
+        if sample and "vector" in sample:
+            dim = len(sample["vector"])
+            if dim != expected_dim:
+                raise RuntimeError(
+                    f"Embedding dimension mismatch in DB: expected {expected_dim}, found {dim}"
+                )
             return
-        dim = len(sample["vector"])
-        if dim != expected_dim:
-            raise RuntimeError(f"Embedding dimension mismatch in DB: expected {expected_dim}, found {dim}")
 
-    def upsert_repo(self, repo_id: str, name: str, root_path: str, default_branch: str, last_indexed_commit: str | None) -> None:
+        # Mixed-dimension migration mode: allow execution to proceed when DB has old
+        # embeddings but none for the expected dimension yet.
+        sample_any = self.embeddings.find_one({}, {"vector": 1, "embedding_dim": 1})
+        if not sample_any or "vector" not in sample_any:
+            return
+        return
+
+    def upsert_repo(
+        self,
+        repo_id: str,
+        name: str,
+        root_path: str,
+        default_branch: str,
+        last_indexed_commit: str | None,
+    ) -> None:
         now = datetime.now(timezone.utc)
         self.repos.update_one(
             {"repo_id": repo_id},
@@ -173,7 +270,9 @@ class MongoStore:
         )
         return job_id
 
-    def finish_job(self, job_id: str, status: str, stats: dict[str, Any], errors: list[str]) -> None:
+    def finish_job(
+        self, job_id: str, status: str, stats: dict[str, Any], errors: list[str]
+    ) -> None:
         self.index_jobs.update_one(
             {"job_id": job_id},
             {
@@ -186,7 +285,9 @@ class MongoStore:
             },
         )
 
-    def upsert_many(self, collection: Collection, docs: list[dict], key_fields: list[str]) -> int:
+    def upsert_many(
+        self, collection: Collection, docs: list[dict], key_fields: list[str]
+    ) -> int:
         if not docs:
             return 0
         now = datetime.now(timezone.utc)
@@ -200,18 +301,55 @@ class MongoStore:
             changed += int(result.modified_count) + int(result.upserted_id is not None)
         return changed
 
-    def delete_by_paths(self, repo_id: str, branch: str, file_paths: list[str]) -> dict[str, int]:
+    def delete_by_paths(
+        self, repo_id: str, branch: str, file_paths: list[str]
+    ) -> dict[str, int]:
         if not file_paths:
             return {"files": 0, "symbols": 0, "chunks": 0, "embeddings": 0, "edges": 0}
-        files_deleted = self.files.delete_many({"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}).deleted_count
-        symbols = list(self.symbols.find({"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}, {"symbol_id": 1, "_id": 0}))
+        files_deleted = self.files.delete_many(
+            {"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}
+        ).deleted_count
+        symbols = list(
+            self.symbols.find(
+                {
+                    "repo_id": repo_id,
+                    "branch": branch,
+                    "file_path": {"$in": file_paths},
+                },
+                {"symbol_id": 1, "_id": 0},
+            )
+        )
         symbol_ids = [s["symbol_id"] for s in symbols]
-        symbols_deleted = self.symbols.delete_many({"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}).deleted_count
-        chunks = list(self.chunks.find({"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}, {"chunk_id": 1, "_id": 0}))
+        symbols_deleted = self.symbols.delete_many(
+            {"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}
+        ).deleted_count
+        chunks = list(
+            self.chunks.find(
+                {
+                    "repo_id": repo_id,
+                    "branch": branch,
+                    "file_path": {"$in": file_paths},
+                },
+                {"chunk_id": 1, "_id": 0},
+            )
+        )
         chunk_ids = [c["chunk_id"] for c in chunks]
-        chunks_deleted = self.chunks.delete_many({"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}).deleted_count
-        embeddings_deleted = self.embeddings.delete_many({"repo_id": repo_id, "branch": branch, "chunk_id": {"$in": chunk_ids}}).deleted_count
-        edges_deleted = self.edges.delete_many({"repo_id": repo_id, "branch": branch, "$or": [{"from_symbol_id": {"$in": symbol_ids}}, {"to_symbol_id": {"$in": symbol_ids}}]}).deleted_count
+        chunks_deleted = self.chunks.delete_many(
+            {"repo_id": repo_id, "branch": branch, "file_path": {"$in": file_paths}}
+        ).deleted_count
+        embeddings_deleted = self.embeddings.delete_many(
+            {"repo_id": repo_id, "branch": branch, "chunk_id": {"$in": chunk_ids}}
+        ).deleted_count
+        edges_deleted = self.edges.delete_many(
+            {
+                "repo_id": repo_id,
+                "branch": branch,
+                "$or": [
+                    {"from_symbol_id": {"$in": symbol_ids}},
+                    {"to_symbol_id": {"$in": symbol_ids}},
+                ],
+            }
+        ).deleted_count
         return {
             "files": files_deleted,
             "symbols": symbols_deleted,

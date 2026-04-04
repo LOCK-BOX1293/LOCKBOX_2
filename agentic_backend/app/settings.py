@@ -33,14 +33,18 @@ def _clean_env(value: str | None, default: str) -> str:
     return raw
 
 
-
 def get_settings() -> AppSettings:
     mongo_uri = _clean_env(
         os.getenv("MONGODB_URI") or os.getenv("MONGODB_URI_HACKBITE2"),
         "mongodb://localhost:27017",
     )
+    mongo_db_env = (
+        os.getenv("MONGODB_DB")
+        or os.getenv("MONGODB_DB_HACKBITE2")
+        or os.getenv("MONGODB_DB_HACKBITE3")
+    )
     mongo_db = _clean_env(
-        os.getenv("MONGODB_DB") or os.getenv("MONGODB_DB_HACKBITE2"),
+        mongo_db_env,
         "hackbite2",
     )
 
@@ -54,6 +58,8 @@ def get_settings() -> AppSettings:
         chunk_target_tokens=int(os.getenv("CHUNK_TARGET_TOKENS", "220")),
         chunk_overlap_tokens=int(os.getenv("CHUNK_OVERLAP_TOKENS", "35")),
         index_top_k_default=int(os.getenv("INDEX_TOP_K_DEFAULT", "8")),
-        rerank_enabled=_clean_env(os.getenv("RERANK_ENABLED"), "true").lower() == "true",
-        debug_log_vectors=_clean_env(os.getenv("DEBUG_LOG_VECTORS"), "false").lower() == "true",
+        rerank_enabled=_clean_env(os.getenv("RERANK_ENABLED"), "true").lower()
+        == "true",
+        debug_log_vectors=_clean_env(os.getenv("DEBUG_LOG_VECTORS"), "false").lower()
+        == "true",
     )
