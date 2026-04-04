@@ -80,6 +80,48 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         return vectors
 
 
+class CodeRankEmbedProvider(EmbeddingProvider):
+    """LM Studio/OpenAI-compatible local embedding provider.
+
+    Default endpoint expects LM Studio local server:
+      http://127.0.0.1:1234/v1/embeddings
+    """
+
+    def __init__(self, model: str, dimension: int) -> None:
+        import os
+
+        self.base_url = os.getenv(
+            "LOCAL_EMBEDDING_BASE_URL", "http://127.0.0.1:1234/v1"
+        )
+        self.api_key = os.getenv("LOCAL_EMBEDDING_API_KEY", "lm-studio")
+        self.model = model
+        self._dimension = dimension
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        payload = {"model": self.model, "input": texts}
+        req = request.Request(
+            f"{self.base_url.rstrip('/')}/embeddings",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with request.urlopen(req, timeout=90) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        vectors = [item.get("embedding", []) for item in body.get("data", [])]
+        if vectors and len(vectors[0]) != self._dimension:
+            raise RuntimeError(
+                f"Embedding dimension mismatch: expected {self._dimension}, got {len(vectors[0])}"
+            )
+        return vectors
+
+
 class VertexEmbeddingProvider(EmbeddingProvider):
     def __init__(self, model: str, dimension: int) -> None:
         import os
@@ -185,6 +227,8 @@ def build_provider(name: str, model: str, dimension: int) -> EmbeddingProvider:
     key = name.lower()
     if key == "local":
         return LocalHashEmbeddingProvider(model=model, dimension=dimension)
+    if key in {"coderankembed", "lmstudio", "local-openai"}:
+        return CodeRankEmbedProvider(model=model, dimension=dimension)
     if key == "gemini":
         return GeminiEmbeddingProvider(model=model, dimension=dimension)
     if key == "openai":

@@ -29,7 +29,9 @@ class IndexingPipeline:
             model=settings.embedding_model,
             dimension=settings.embedding_dim,
         )
-        self.embedder = EmbeddingClient(provider, batch_size=settings.embedding_batch_size)
+        self.embedder = EmbeddingClient(
+            provider, batch_size=settings.embedding_batch_size
+        )
 
     def ensure_indexes(self, repo_id: str) -> None:
         self.store.ensure_standard_indexes()
@@ -40,10 +42,14 @@ class IndexingPipeline:
             self.store.upsert_repo(repo_id, repo_id, "", "main", None)
 
     def index_full(self, repo_path: str, repo_id: str, branch: str) -> dict:
-        return self._index(repo_path=repo_path, repo_id=repo_id, branch=branch, mode="full")
+        return self._index(
+            repo_path=repo_path, repo_id=repo_id, branch=branch, mode="full"
+        )
 
     def index_incremental(self, repo_path: str, repo_id: str, branch: str) -> dict:
-        return self._index(repo_path=repo_path, repo_id=repo_id, branch=branch, mode="incremental")
+        return self._index(
+            repo_path=repo_path, repo_id=repo_id, branch=branch, mode="incremental"
+        )
 
     def _index(self, repo_path: str, repo_id: str, branch: str, mode: str) -> dict:
         repo_root = Path(repo_path)
@@ -56,26 +62,42 @@ class IndexingPipeline:
             commit_sha = self.scanner.current_commit(repo_root)
             prev = self.store.get_repo(repo_id)
             previous_commit = (prev or {}).get("last_indexed_commit") if prev else None
-            self.store.upsert_repo(repo_id, repo_root.name, str(repo_root), branch, commit_sha)
+            self.store.upsert_repo(
+                repo_id, repo_root.name, str(repo_root), branch, commit_sha
+            )
 
             all_files = self.scanner.scan(repo_root)
             files_to_process = all_files
             deleted: list[str] = []
 
-            if mode == "incremental" and previous_commit and previous_commit != "no-git" and commit_sha != "no-git":
-                changes = self.scanner.changed_files(repo_root, previous_commit, commit_sha)
+            if (
+                mode == "incremental"
+                and previous_commit
+                and previous_commit != "no-git"
+                and commit_sha != "no-git"
+            ):
+                changes = self.scanner.changed_files(
+                    repo_root, previous_commit, commit_sha
+                )
                 touched = set(changes["added"] + changes["modified"])
                 deleted = changes["deleted"]
                 if touched:
-                    files_to_process = [f for f in all_files if f["file_path"] in touched]
+                    files_to_process = [
+                        f for f in all_files if f["file_path"] in touched
+                    ]
                 else:
                     hash_by_path = {
                         d["file_path"]: d["file_hash"]
                         for d in self.store.files.find(
-                            {"repo_id": repo_id, "branch": branch}, {"_id": 0, "file_path": 1, "file_hash": 1}
+                            {"repo_id": repo_id, "branch": branch},
+                            {"_id": 0, "file_path": 1, "file_hash": 1},
                         )
                     }
-                    files_to_process = [f for f in all_files if hash_by_path.get(f["file_path"]) != f["file_hash"]]
+                    files_to_process = [
+                        f
+                        for f in all_files
+                        if hash_by_path.get(f["file_path"]) != f["file_hash"]
+                    ]
 
             stats["files_scanned"] = len(all_files)
             stats["files_selected"] = len(files_to_process)
@@ -130,6 +152,17 @@ class IndexingPipeline:
             stats["symbols_extracted"] = len(symbol_docs)
             stats["chunks_created"] = len(chunk_docs)
 
+            # For full re-index, clear stale artifacts for repo+branch to avoid old noisy
+            # symbols surviving when parser behavior changes.
+            if mode == "full":
+                self.store.files.delete_many({"repo_id": repo_id, "branch": branch})
+                self.store.symbols.delete_many({"repo_id": repo_id, "branch": branch})
+                self.store.chunks.delete_many({"repo_id": repo_id, "branch": branch})
+                self.store.embeddings.delete_many(
+                    {"repo_id": repo_id, "branch": branch}
+                )
+                self.store.edges.delete_many({"repo_id": repo_id, "branch": branch})
+
             self.store.upsert_many(
                 self.store.files,
                 file_docs,
@@ -174,12 +207,25 @@ class IndexingPipeline:
             )
 
             stats["embeddings_created"] = len(emb_docs)
-            stats["duration_ms"] = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+            stats["duration_ms"] = int(
+                (datetime.now(timezone.utc) - started).total_seconds() * 1000
+            )
             status = "success" if not errors else "partial-success"
-            self.store.finish_job(job_id, status=status, stats=dict(stats), errors=errors)
-            return {"job_id": job_id, "status": status, "stats": dict(stats), "errors": errors}
+            self.store.finish_job(
+                job_id, status=status, stats=dict(stats), errors=errors
+            )
+            return {
+                "job_id": job_id,
+                "status": status,
+                "stats": dict(stats),
+                "errors": errors,
+            }
         except Exception as exc:
             errors.append(str(exc))
-            stats["duration_ms"] = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
-            self.store.finish_job(job_id, status="failed", stats=dict(stats), errors=errors)
+            stats["duration_ms"] = int(
+                (datetime.now(timezone.utc) - started).total_seconds() * 1000
+            )
+            self.store.finish_job(
+                job_id, status="failed", stats=dict(stats), errors=errors
+            )
             raise

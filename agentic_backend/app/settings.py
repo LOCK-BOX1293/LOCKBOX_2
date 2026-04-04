@@ -24,6 +24,7 @@ class AppSettings:
     index_top_k_default: int
     rerank_enabled: bool
     debug_log_vectors: bool
+    index_import_symbols: bool
 
 
 def _clean_env(value: str | None, default: str) -> str:
@@ -38,11 +39,7 @@ def get_settings() -> AppSettings:
         os.getenv("MONGODB_URI") or os.getenv("MONGODB_URI_HACKBITE2"),
         "mongodb://localhost:27017",
     )
-    mongo_db_env = (
-        os.getenv("MONGODB_DB")
-        or os.getenv("MONGODB_DB_HACKBITE2")
-        or os.getenv("MONGODB_DB_HACKBITE3")
-    )
+    mongo_db_env = os.getenv("MONGODB_DB") or os.getenv("MONGODB_DB_HACKBITE2")
     mongo_db = _clean_env(
         mongo_db_env,
         "hackbite2",
@@ -61,5 +58,9 @@ def get_settings() -> AppSettings:
         rerank_enabled=_clean_env(os.getenv("RERANK_ENABLED"), "true").lower()
         == "true",
         debug_log_vectors=_clean_env(os.getenv("DEBUG_LOG_VECTORS"), "false").lower()
+        == "true",
+        index_import_symbols=_clean_env(
+            os.getenv("INDEX_IMPORT_SYMBOLS"), "false"
+        ).lower()
         == "true",
     )
