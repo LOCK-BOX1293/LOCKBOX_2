@@ -551,6 +551,17 @@ def _build_focused_graph(
     MAX_FOCUSED_NODES = 180
     MAX_FOCUSED_EDGES = 260
 
+    if not path_prefix:
+        has_src = store.files.find_one(
+            {
+                "repo_id": repo_id,
+                "branch": branch,
+                "file_path": {"$regex": r"^src/"},
+            },
+            {"_id": 1},
+        )
+        path_prefix = "src/" if has_src else None
+
     result = retriever.query(
         repo_id=repo_id,
         branch=branch,
@@ -561,10 +572,18 @@ def _build_focused_graph(
         include_tests=include_tests,
         include_graph=True,
     )
+    if not result.get("chunks") and path_prefix:
+        result = retriever.query(
+            repo_id=repo_id,
+            branch=branch,
+            q=q,
+            top_k=top_k,
+            lang=lang,
+            path_prefix=None,
+            include_tests=include_tests,
+            include_graph=True,
+        )
     chunks = result.get("chunks", [])
-
-    if not path_prefix:
-        path_prefix = "src/"
 
     def _is_low_signal_symbol(sym: dict) -> bool:
         name = str(sym.get("name") or "").strip().lower()

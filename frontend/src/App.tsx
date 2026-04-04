@@ -95,9 +95,18 @@ function App() {
 
       // Always render graph from focused retrieval endpoint for stability and deterministic node set.
       const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query, includeTests);
-      setGraphData(focused);
+      let nextMode: 'full' | 'focused' = 'focused';
+      let nextGraph = focused;
 
-      setMode('focused');
+      // If focused returns only query-anchor node, automatically fallback to full overview.
+      if (!focused?.nodes || focused.nodes.length <= 1) {
+        const full = await fetchGraphOverview(activeRepo, branch, 'full', undefined, includeTests);
+        nextGraph = full;
+        nextMode = 'full';
+      }
+
+      setGraphData(nextGraph);
+      setMode(nextMode);
     } catch (e) {
       console.error('Failed to ask backend', e);
       // fallback focused graph for resilience
