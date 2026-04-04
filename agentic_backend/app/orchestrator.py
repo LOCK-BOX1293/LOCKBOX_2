@@ -91,7 +91,16 @@ class Orchestrator:
         answer, confidence, citations = parse_answer_payload(
             raw_answer, retrieval_result.chunks
         )
-        graph = self.visual_mapper.build_graph(retrieval_result.chunks)
+        graph = self.visual_mapper.build_query_trace(
+            query=req.query,
+            user_role=req.user_role,
+            chunks=retrieval_result.chunks,
+            answer=answer,
+            confidence=confidence,
+            citations=citations,
+            session_id=req.session_id,
+            intent=intent,
+        )
 
         self.sessions.append_event(
             SessionEvent(
