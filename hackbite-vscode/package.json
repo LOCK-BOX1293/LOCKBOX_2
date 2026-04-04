@@ -2,7 +2,7 @@
   "name": "hackbite-vscode",
   "displayName": "Hackbite",
   "description": "Hackbite VS Code client for indexing, retrieval, and code graph workflows",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "hackbite",
   "engines": {
     "vscode": "^1.80.0"
@@ -71,7 +71,7 @@
         },
         "hackbite.autoIndex": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Attempt indexing when workspace opens and no successful index exists"
         },
         "hackbite.indexTimeoutMs": {
