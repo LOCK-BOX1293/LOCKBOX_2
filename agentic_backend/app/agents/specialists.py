@@ -29,6 +29,33 @@ def _format_context(chunks: list[RetrievedChunk]) -> str:
     return "\n\n".join(lines)
 
 
+def _clean_snippet(text: str, limit: int = 180) -> str:
+    cleaned = " ".join(text.strip().split())
+    return cleaned[:limit].rstrip(" ,;:.")
+
+
+def _fallback_file_importance(query: str, file_path: str, chunks: list[RetrievedChunk]) -> str:
+    ranked = sorted(chunks, key=lambda c: c.score, reverse=True)
+    symbol_names = [c.symbol_name for c in ranked if c.symbol_name]
+    unique_symbols: list[str] = []
+    for symbol in symbol_names:
+        if symbol and symbol not in unique_symbols:
+            unique_symbols.append(symbol)
+        if len(unique_symbols) >= 3:
+            break
+    snippet = _clean_snippet(" ".join(c.text for c in ranked[:2]), 180)
+    file_name = file_path.split("/")[-1] or file_path
+    if unique_symbols:
+        return f"Uses {', '.join(unique_symbols)} in {file_name} to answer the query. Evidence: {snippet or 'retrieved matching code.'}"
+    return f"Uses the logic in {file_name} to answer the query. Evidence: {snippet or 'retrieved matching code.'}"
+
+
+def _fallback_symbol_importance(file_path: str, symbol_name: str, chunk: RetrievedChunk) -> str:
+    snippet = _clean_snippet(chunk.text, 150)
+    file_name = file_path.split("/")[-1] or file_path
+    return f"Shows how {symbol_name} works inside {file_name}. Evidence: {snippet or 'retrieved matching code.'}"
+
+
 class ExplanationAgent:
     def __init__(self, llm: GeminiClient) -> None:
         self.llm = llm
@@ -46,6 +73,9 @@ class ExplanationAgent:
 
 
 class VisualMapperAgent:
+    def __init__(self, llm: GeminiClient | None = None) -> None:
+        self.llm = llm
+
     def build_graph(self, chunks: list[RetrievedChunk]) -> dict:
         nodes = []
         edges = []
@@ -59,6 +89,80 @@ class VisualMapperAgent:
                 nodes.append({"id": symbol_id, "label": chunk.symbol_name, "type": "symbol"})
                 edges.append({"source": chunk.file_path, "target": symbol_id, "type": "contains"})
         return {"nodes": nodes, "edges": edges}
+
+    def _annotate_trace_nodes(
+        self,
+        query: str,
+        answer: str,
+        chunks: list[RetrievedChunk],
+    ) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+        file_annotations: dict[str, str] = {}
+        symbol_annotations: dict[tuple[str, str], str] = {}
+        if not self.llm or not chunks:
+            return file_annotations, symbol_annotations
+
+        by_file: dict[str, list[RetrievedChunk]] = defaultdict(list)
+        for chunk in chunks:
+            by_file[chunk.file_path].append(chunk)
+
+        file_sections: list[str] = []
+        top_files = sorted(
+            by_file.items(),
+            key=lambda item: max((c.score for c in item[1]), default=0.0),
+            reverse=True,
+        )[:6]
+        for index, (file_path, file_chunks) in enumerate(top_files, start=1):
+            ranked_chunks = sorted(file_chunks, key=lambda c: c.score, reverse=True)
+            symbols = [c.symbol_name for c in ranked_chunks if c.symbol_name][:3]
+            excerpt = " ".join(c.text.strip().replace("\n", " ")[:180] for c in ranked_chunks[:2]).strip()
+            file_sections.append(
+                "\n".join(
+                    [
+                        f"FILE {index}",
+                        f"path={file_path}",
+                        f"symbols={', '.join(symbols) if symbols else 'n/a'}",
+                        f"evidence={excerpt or 'n/a'}",
+                    ]
+                )
+            )
+
+        prompt = (
+            "You are annotating a query trace graph.\n"
+            "For each file, write one compact sentence that states the real job of that file for this query.\n"
+            "For each symbol, write one compact sentence only if the symbol clearly matters.\n"
+            "Do not say generic phrases like 'explains', 'helps', 'is relevant', or 'matters'.\n"
+            "Name the concrete role: fetches news, ranks candidates, checks coverage, builds fallback data, composes answer, routes request, etc.\n"
+            "Do not repeat the file path in the sentence. Start with a concrete verb when possible.\n\n"
+            f"Query:\n{query}\n\n"
+            f"Final answer:\n{answer[:1200]}\n\n"
+            f"Evidence groups:\n{chr(10).join(file_sections)}\n\n"
+            "Return strict JSON with shape:\n"
+            "{"
+            "\"files\":[{\"path\":\"...\",\"importance\":\"...\"}],"
+            "\"symbols\":[{\"path\":\"...\",\"symbol\":\"...\",\"importance\":\"...\"}]"
+            "}"
+        )
+
+        try:
+            raw = self.llm.generate("Trace annotation assistant", prompt)
+            parsed = json.loads(raw)
+        except Exception:
+            return file_annotations, symbol_annotations
+
+        for item in parsed.get("files", []) or []:
+            path = str(item.get("path", "")).strip()
+            importance = str(item.get("importance", "")).strip()
+            if path and importance:
+                file_annotations[path] = importance
+
+        for item in parsed.get("symbols", []) or []:
+            path = str(item.get("path", "")).strip()
+            symbol = str(item.get("symbol", "")).strip()
+            importance = str(item.get("importance", "")).strip()
+            if path and symbol and importance:
+                symbol_annotations[(path, symbol)] = importance
+
+        return file_annotations, symbol_annotations
 
     def build_query_trace(
         self,
@@ -166,6 +270,12 @@ class VisualMapperAgent:
         add_edge(evidence_id, explain_id, "grounds")
         add_edge(explain_id, answer_id, "produces")
 
+        file_annotations, symbol_annotations = self._annotate_trace_nodes(
+            query=query,
+            answer=answer,
+            chunks=chunks,
+        )
+
         file_best_score: dict[str, float] = {}
         file_spans: dict[str, tuple[int, int]] = {}
         file_symbols: dict[str, list[RetrievedChunk]] = defaultdict(list)
@@ -197,12 +307,13 @@ class VisualMapperAgent:
             add_node(
                 {
                     "id": file_id,
-                    "label": file_path,
-                    "display_label": file_path,
+                    "label": file_path.split("/")[-1] or file_path,
+                    "display_label": file_path.split("/")[-1] or file_path,
                     "type": "file",
                     "stage": "evidence",
                     "relevance_score": score,
-                    "reason": f"retrieved lines {start_line}-{end_line}",
+                    "reason": file_annotations.get(file_path)
+                    or _fallback_file_importance(query, file_path, file_symbols.get(file_path, [])),
                     "meta": {
                         "file_path": file_path,
                         "start_line": start_line,
@@ -229,11 +340,12 @@ class VisualMapperAgent:
                     {
                         "id": symbol_id,
                         "label": f"{symbol_name}()",
-                        "display_label": f"{symbol_name} ({file_path.split('/')[-1]})",
+                        "display_label": f"{symbol_name}()",
                         "type": "symbol",
                         "stage": "evidence",
                         "relevance_score": chunk.score,
-                        "reason": f"symbol evidence at {file_path}:{chunk.start_line}-{chunk.end_line}",
+                        "reason": symbol_annotations.get((file_path, symbol_name))
+                        or _fallback_symbol_importance(file_path, symbol_name, chunk),
                         "meta": {
                             "file_path": file_path,
                             "symbol_name": symbol_name,

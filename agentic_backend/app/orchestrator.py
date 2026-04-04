@@ -28,7 +28,7 @@ class Orchestrator:
             api_key=settings.gemini_api_key, model=settings.gemini_model
         )
         self.explainer = ExplanationAgent(self.llm)
-        self.visual_mapper = VisualMapperAgent()
+        self.visual_mapper = VisualMapperAgent(self.llm)
         self.retrieval: RetrievalProvider = (
             HttpRetrievalProvider(settings.retrieval_service_url)
             if settings.retrieval_service_url

@@ -389,6 +389,23 @@ body {
   position: relative;
 }
 
+.trace-canvas-shell::before {
+  content: "drag nodes to rearrange";
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  z-index: 12;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 7px 11px;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #d8e2f7;
+  background: rgba(8, 11, 17, 0.82);
+  backdrop-filter: blur(10px);
+}
+
 .trace-canvas-legend {
   position: absolute;
   top: 18px;
@@ -425,10 +442,11 @@ body {
 }
 
 .trace-flow .react-flow__node {
-  border-radius: 26px;
+  border-radius: 20px;
   background: transparent;
   border: none;
   box-shadow: none;
+  cursor: grab;
 }
 
 .trace-flow .react-flow__node:hover,
@@ -436,6 +454,10 @@ body {
   border-color: transparent;
   box-shadow: none;
   z-index: 40;
+}
+
+.trace-flow .react-flow__node.dragging {
+  cursor: grabbing;
 }
 
 .trace-flow .react-flow__controls {
@@ -474,8 +496,8 @@ body {
 .trace-node-card {
   width: 100%;
   min-height: 100%;
-  padding: 16px 18px 18px;
-  border-radius: 26px;
+  padding: 12px 13px 12px;
+  border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #f7fbff;
   background:
@@ -540,24 +562,30 @@ body {
 
 .trace-node-card-title {
   font-family: "IBM Plex Sans", "Trebuchet MS", sans-serif;
-  font-size: 1rem;
-  line-height: 1.28;
+  font-size: 0.88rem;
+  line-height: 1.18;
   font-weight: 800;
-  margin-bottom: 10px;
+  margin-bottom: 7px;
   word-break: break-word;
 }
 
 .trace-node-card-body {
-  font-size: 0.8rem;
-  line-height: 1.48;
+  font-size: 0.72rem;
+  line-height: 1.38;
   color: rgba(244, 247, 255, 0.88);
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .trace-node-card-meta {
-  margin-top: 14px;
-  font-size: 0.72rem;
-  color: #f5c385;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.64rem;
+  color: #c6d2ea;
   font-family: 'Fira Code', monospace;
   word-break: break-word;
 }

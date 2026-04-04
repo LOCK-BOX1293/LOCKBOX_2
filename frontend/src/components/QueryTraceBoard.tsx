@@ -60,12 +60,16 @@ function stageIndex(stage?: string): number {
 function summarize(node: TraceNode): string {
   if (node.type === 'answer') return node.reason || 'Grounded final answer';
   if (node.reason) return node.reason;
-  if (node.meta?.file_path) return node.meta.file_path;
+  if (node.type === 'file') return 'Relevant file for this answer.';
+  if (node.type === 'symbol') return 'Relevant symbol for this answer.';
   return node.display_label || node.label;
 }
 
 function shortMeta(node: TraceNode): string {
-  if (node.meta?.file_path) return node.meta.file_path;
+  if (node.meta?.file_path) {
+    const span = node.meta?.start_line && node.meta?.end_line ? `:${node.meta.start_line}-${node.meta.end_line}` : '';
+    return `${node.meta.file_path}${span}`;
+  }
   if (typeof node.relevance_score === 'number' && node.relevance_score > 0) return `score ${node.relevance_score.toFixed(2)}`;
   return STAGE_TITLES[node.stage || ''] || (node.stage || node.type || 'trace');
 }
@@ -90,17 +94,17 @@ function nodeTone(node: TraceNode): string {
 function nodeDimensions(node: TraceNode) {
   switch (node.type) {
     case 'query':
-      return { width: 340, height: 172 };
+      return { width: 320, height: 150 };
     case 'answer':
-      return { width: 300, height: 164 };
+      return { width: 280, height: 150 };
     case 'file':
-      return { width: 260, height: 148 };
+      return { width: 228, height: 124 };
     case 'symbol':
-      return { width: 230, height: 136 };
+      return { width: 214, height: 118 };
     case 'citation':
-      return { width: 250, height: 132 };
+      return { width: 216, height: 114 };
     default:
-      return { width: 220, height: 126 };
+      return { width: 198, height: 108 };
   }
 }
 
@@ -137,8 +141,8 @@ function buildTraceGraph(trace: any) {
   const g = new dagre.graphlib.Graph();
   g.setGraph({
     rankdir: 'LR',
-    ranksep: 164,
-    nodesep: 52,
+    ranksep: 136,
+    nodesep: 34,
     marginx: 48,
     marginy: 32,
   });
@@ -168,11 +172,11 @@ function buildTraceGraph(trace: any) {
       },
       data: {
         label: (
-            <div className={`trace-node-card trace-node-card-${tone}`}>
-              <div className="trace-node-card-topline">
+          <div className={`trace-node-card trace-node-card-${tone}`}>
+            <div className="trace-node-card-topline">
               <span className="trace-node-card-stage-label">{STAGE_TITLES[node.stage || ''] || (node.stage || node.type || 'trace')}</span>
               <span className="trace-node-card-kind">{node.type || 'node'}</span>
-              </div>
+            </div>
             <div className="trace-node-card-title">{node.display_label || node.label}</div>
             <div className="trace-node-card-body">{summarize(node)}</div>
             <div className="trace-node-card-meta">{shortMeta(node)}</div>
@@ -180,7 +184,7 @@ function buildTraceGraph(trace: any) {
         ),
       },
       type: 'default',
-      draggable: false,
+      draggable: true,
       selectable: true,
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
@@ -302,7 +306,7 @@ export function QueryTraceBoard({ trace, query, answer, onNodeSelect, onEdgeSele
           fitViewOptions={{ padding: 0.14 }}
           panOnDrag
           zoomOnScroll
-          nodesDraggable={false}
+          nodesDraggable
           elementsSelectable
           proOptions={{ hideAttribution: true }}
           className="trace-flow"
