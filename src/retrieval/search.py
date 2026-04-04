@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, List
 from src.storage.repositories import DBRepository
 from src.core.config import settings
@@ -70,6 +71,52 @@ class Retriever:
         results = list(self.db_repo.chunks.aggregate(pipeline))
         return results
 
+    def lexical_search_fallback(self, repo_id: str, branch: str, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+        """Fallback search when Atlas Search index is unavailable.
+
+        This uses case-insensitive regex term matching on chunk content/file path
+        and returns chunk_id + a simple score compatible with RRF.
+        """
+        terms = [t for t in re.findall(r"[A-Za-z0-9_]+", query.lower()) if len(t) > 1]
+        if not terms:
+            return []
+
+        or_clauses = []
+        for t in terms:
+            pattern = {"$regex": re.escape(t), "$options": "i"}
+            or_clauses.append({"content": pattern})
+            or_clauses.append({"file_path": pattern})
+
+        pipeline = [
+            {
+                "$match": {
+                    "repo_id": repo_id,
+                    "branch": branch,
+                    "$or": or_clauses,
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "chunk_id": 1,
+                    "content": 1,
+                    "file_path": 1,
+                }
+            },
+            {"$limit": max(top_k * 8, top_k)},
+        ]
+
+        docs = list(self.db_repo.chunks.aggregate(pipeline))
+        scored = []
+        for d in docs:
+            text = f"{d.get('file_path', '')}\n{d.get('content', '')}".lower()
+            score = sum(text.count(t) for t in terms)
+            if score > 0:
+                scored.append({"chunk_id": d["chunk_id"], "score": float(score)})
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:top_k]
+
     def get_chunk_details(self, repo_id: str, branch: str, chunk_ids: List[str]) -> Dict[str, Any]:
         pipeline = [
             {
@@ -92,19 +139,24 @@ class Retriever:
 
     def retrieve_hybrid(self, repo_id: str, branch: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         # 1. Fetch from Vector & Lexical
+        from src.core.config import logger
+
         try:
             vector_results = self.vector_search(repo_id, branch, query, top_k=top_k)
         except Exception as e:
-            from src.core.config import logger
             logger.error("Vector search failed (index might not exist). Make sure to run ensure-indexes.", error=str(e))
             vector_results = []
             
         try:
             lexical_results = self.lexical_search(repo_id, branch, query, top_k=top_k)
         except Exception as e:
-            from src.core.config import logger
             logger.error("Lexical search failed (index might not exist). Make sure to run ensure-indexes.", error=str(e))
             lexical_results = []
+
+        if not lexical_results:
+            lexical_results = self.lexical_search_fallback(repo_id, branch, query, top_k=top_k)
+            if lexical_results:
+                logger.warning("Using fallback lexical retrieval because Atlas lexical search returned no results")
 
         # 2. Reciprocal Rank Fusion
         fused_scores = {}

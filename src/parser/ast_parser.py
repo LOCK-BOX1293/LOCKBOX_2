@@ -56,12 +56,8 @@ class ASTParser:
                 (arrow_function) @function
             """),
             "typescript": self.lang_ts.query("""
-                (function_declaration
-                    name: (identifier) @name
-                ) @function
-                (class_declaration
-                    name: (identifier) @name
-                ) @class
+                (function_declaration) @function
+                (class_declaration) @class
             """)
         }
 

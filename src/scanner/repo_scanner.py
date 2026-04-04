@@ -9,13 +9,14 @@ from pathspec.patterns import GitWildMatchPattern
 class RepoScanner:
     def __init__(self, root_path: str):
         self.root_path = Path(root_path).resolve()
-        self.ignore_spec = self._load_gitignore()
-        
+
         # Hardcode some defaults not to scan
         self.default_ignores = [
             ".git", ".env", "venv", "__pycache__", "node_modules", 
             "dist", "build", "*.pyc", "*.pyo", "*.pyd", ".DS_Store"
         ]
+
+        self.ignore_spec = self._load_gitignore()
         
     def _load_gitignore(self) -> PathSpec:
         gitignore_path = self.root_path / ".gitignore"
