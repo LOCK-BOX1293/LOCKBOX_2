@@ -1,5 +1,15 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
+import * as http from "http";
+import { ChildProcess, spawn } from "child_process";
 import { graphNode, graphOverview } from "../api/graphApi";
+
+const FRONTEND_HOST = "127.0.0.1";
+const FRONTEND_PORT = 4174;
+const FRONTEND_URL = `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
+let frontendDevProcess: ChildProcess | undefined;
+let frontendStartPromise: Promise<void> | undefined;
 
 export async function openGraphPanel(repoId: string, branch: string): Promise<void> {
   const panel = vscode.window.createWebviewPanel(
@@ -10,6 +20,13 @@ export async function openGraphPanel(repoId: string, branch: string): Promise<vo
   );
 
   try {
+    const frontendDir = resolveFrontendDir();
+    if (frontendDir) {
+      await ensureFrontendDevServer(frontendDir);
+      panel.webview.html = getFrontendHostHtml(repoId, branch);
+      return;
+    }
+
     const graph = await graphOverview(repoId, branch, "full");
     panel.webview.html = getGraphHtml(graph);
 
@@ -38,6 +55,183 @@ export async function openGraphPanel(repoId: string, branch: string): Promise<vo
       <p>Failed to load graph: ${escapeHtml(error instanceof Error ? error.message : "Unknown error")}</p>
     </body></html>`;
   }
+}
+
+function resolveFrontendDir(): string | null {
+  const candidates: string[] = [];
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+
+  for (const folder of workspaceFolders) {
+    const root = folder.uri.fsPath;
+    candidates.push(path.join(root, "frontend"));
+    candidates.push(path.join(root, "LOCKBOX_2", "frontend"));
+    candidates.push(path.join(root, "lockbox_2", "frontend"));
+  }
+
+  // Extension root fallback (hackbite-vscode sibling frontend)
+  const extensionRoot = path.resolve(__dirname, "..", "..");
+  candidates.push(path.resolve(extensionRoot, "..", "frontend"));
+
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, "package.json"))) {
+      return c;
+    }
+  }
+  return null;
+}
+
+async function ensureFrontendDevServer(frontendDir: string): Promise<void> {
+  if (await isFrontendReachable()) {
+    return;
+  }
+  if (frontendStartPromise) {
+    return frontendStartPromise;
+  }
+
+  frontendStartPromise = new Promise<void>((resolve, reject) => {
+    const candidates: Array<{ cmd: string; args: string[] }> = [
+      {
+        cmd: process.platform === "win32" ? "corepack.cmd" : "corepack",
+        args: [
+          "pnpm",
+          "dev",
+          "--host",
+          FRONTEND_HOST,
+          "--port",
+          String(FRONTEND_PORT),
+          "--strictPort",
+        ],
+      },
+      {
+        cmd: process.platform === "win32" ? "npm.cmd" : "npm",
+        args: [
+          "run",
+          "dev",
+          "--",
+          "--host",
+          FRONTEND_HOST,
+          "--port",
+          String(FRONTEND_PORT),
+          "--strictPort",
+        ],
+      },
+    ];
+
+    const tryNext = (idx: number) => {
+      if (idx >= candidates.length) {
+        frontendStartPromise = undefined;
+        reject(new Error("Unable to start frontend dev server with pnpm or npm."));
+        return;
+      }
+
+      const chosen = candidates[idx];
+      const proc = spawn(chosen.cmd, chosen.args, {
+        cwd: frontendDir,
+        env: { ...process.env, BROWSER: "none" },
+        windowsHide: true,
+        shell: false,
+        stdio: "ignore",
+      });
+      frontendDevProcess = proc;
+
+      let finished = false;
+
+      const cleanup = () => {
+        proc.removeAllListeners("error");
+        proc.removeAllListeners("exit");
+      };
+
+      const failAndNext = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        frontendDevProcess = undefined;
+        tryNext(idx + 1);
+      };
+
+      proc.once("error", () => failAndNext());
+      proc.once("exit", (code) => {
+        frontendDevProcess = undefined;
+        if (finished) {
+          return;
+        }
+        finished = true;
+        cleanup();
+        if (code !== 0) {
+          tryNext(idx + 1);
+        }
+      });
+
+      waitForFrontend(35000)
+        .then(() => {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          cleanup();
+          frontendStartPromise = undefined;
+          resolve();
+        })
+        .catch(() => failAndNext());
+    };
+
+    tryNext(0);
+  });
+
+  return frontendStartPromise;
+}
+
+function isFrontendReachable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get(FRONTEND_URL, (res) => {
+      const ok = (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 500;
+      res.resume();
+      resolve(ok);
+    });
+    req.setTimeout(1500, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on("error", () => resolve(false));
+  });
+}
+
+async function waitForFrontend(timeoutMs: number): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isFrontendReachable()) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Frontend UI did not start on ${FRONTEND_URL} within ${timeoutMs}ms.`);
+}
+
+function getFrontendHostHtml(repoId: string, branch: string): string {
+  const nonce = String(Date.now());
+  return `<!doctype html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; frame-src ${FRONTEND_URL}; connect-src ${FRONTEND_URL} http://127.0.0.1:8081 http://localhost:8081;" />
+    <style>
+      html, body { margin: 0; height: 100%; background: var(--vscode-editor-background); color: var(--vscode-foreground); font-family: Segoe UI, sans-serif; }
+      .top { padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border); font-size: 12px; color: var(--vscode-descriptionForeground); }
+      .top strong { color: var(--vscode-foreground); }
+      #appFrame { width: 100%; height: calc(100% - 38px); border: 0; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="top"><strong>Hackbite Code Map</strong> (frontend mode) | repo: ${escapeHtml(repoId)} | branch: ${escapeHtml(branch)} | ui: ${FRONTEND_URL}</div>
+    <iframe id="appFrame" src="${FRONTEND_URL}"></iframe>
+    <script nonce="${nonce}">
+      const frame = document.getElementById('appFrame');
+      frame.addEventListener('error', () => {
+        document.body.innerHTML = '<div style="padding:16px;">Failed to load frontend UI at ${FRONTEND_URL}. Make sure frontend dev server is running.</div>';
+      });
+    </script>
+  </body>
+  </html>`;
 }
 
 function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; mode: string; meta: Record<string, unknown> }): string {
@@ -71,6 +265,7 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
       .nodeType { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
       #mapCanvas { position: relative; min-width: 1200px; min-height: 900px; }
       #edgeSvg { position: absolute; inset: 0; pointer-events: none; }
+      #edgeLabelSvg { position: absolute; inset: 0; pointer-events: none; }
       .node { position:absolute; transform: translate(-50%, -50%); border-radius: 10px; padding: 5px 9px; font-size: 11px; cursor:pointer; white-space:nowrap; border: 1px solid transparent; }
       .node.file { background:#198754; color:#fff; }
       .node.symbol { background:#0d6efd; color:#fff; }
@@ -105,6 +300,7 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
       <div class="center">
         <div id="mapCanvas">
           <svg id="edgeSvg"></svg>
+          <svg id="edgeLabelSvg"></svg>
         </div>
       </div>
       <div class="right">
@@ -118,6 +314,7 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
       let selectedNodeId = null;
       const mapEl = document.getElementById('mapCanvas');
       const edgeSvg = document.getElementById('edgeSvg');
+      const edgeLabelSvg = document.getElementById('edgeLabelSvg');
       const nodeListEl = document.getElementById('nodeList');
       const filterEl = document.getElementById('filter');
       const leftMetaEl = document.getElementById('leftMeta');
@@ -164,22 +361,45 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
       function renderGraph() {
         mapEl.querySelectorAll('.node').forEach((n) => n.remove());
         edgeSvg.innerHTML = '';
+        edgeLabelSvg.innerHTML = '';
 
         const nodes = (graph.nodes || []).slice(0, 260);
-        const edges = (graph.edges || []).slice(0, 700);
+        const baseEdges = (graph.edges || []).slice(0, 700);
+        const edges = [];
         const files = nodes.filter((n) => nodeType(n) === 'file');
         const symbols = nodes.filter((n) => nodeType(n) === 'symbol');
         const queryNodes = nodes.filter((n) => nodeType(n) === 'query');
         const focusNodes = nodes.filter((n) => nodeType(n) === 'focus');
 
-        const FILE_X_START = 120;
-        const FILE_X_GAP = 190;
+        const FILE_X_START = 140;
+        const FILE_X_GAP = 260;
         const QUERY_Y = 90;
         const FILE_Y = 220;
         const FOCUS_Y = 340;
         const SYMBOL_Y = 470;
 
         positions = new Map();
+        const nodeById = new Map(nodes.map((n) => [nodeKey(n.id), n]));
+
+        // Keep backend edges and synthesize missing file->symbol "contains" links
+        // so mapping always has visible structure.
+        const edgeSeen = new Set();
+        baseEdges.forEach((e) => {
+          const key = nodeKey(e.source) + '->' + nodeKey(e.target) + '::' + String(e.type || '');
+          if (!edgeSeen.has(key)) {
+            edgeSeen.add(key);
+            edges.push(e);
+          }
+        });
+        symbols.forEach((s) => {
+          const sid = nodeKey(s.id);
+          const fp = String(s.file_path || '');
+          if (!fp || !nodeById.has(fp)) return;
+          const hasContains = edges.some((e) => nodeKey(e.source) === fp && nodeKey(e.target) === sid && String(e.type || '').toLowerCase() === 'contains');
+          if (!hasContains) {
+            edges.push({ source: fp, target: sid, type: 'contains', weight: 1.0 });
+          }
+        });
 
         queryNodes.forEach((n, i) => {
           const x = FILE_X_START + (i * FILE_X_GAP * 1.2);
@@ -221,9 +441,10 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
           if (!parentPos) return;
           const group = fileToSymbols.get(nodeKey(f.id)) || [];
           if (!group.length) return;
-          const startX = parentPos.x - ((group.length - 1) * 62) / 2;
+          const localGap = Math.max(70, Math.min(120, FILE_X_GAP / Math.max(2, group.length * 0.55)));
+          const startX = parentPos.x - ((group.length - 1) * localGap) / 2;
           group.forEach((s, idx) => {
-            positions.set(nodeKey(s.id), { x: startX + (idx * 62), y: SYMBOL_Y });
+            positions.set(nodeKey(s.id), { x: startX + (idx * localGap), y: SYMBOL_Y });
           });
         });
 
@@ -245,6 +466,9 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         edgeSvg.setAttribute('viewBox', '0 0 ' + canvasW + ' ' + canvasH);
         edgeSvg.setAttribute('width', String(canvasW));
         edgeSvg.setAttribute('height', String(canvasH));
+        edgeLabelSvg.setAttribute('viewBox', '0 0 ' + canvasW + ' ' + canvasH);
+        edgeLabelSvg.setAttribute('width', String(canvasW));
+        edgeLabelSvg.setAttribute('height', String(canvasH));
 
         const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
         const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
@@ -260,6 +484,14 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         markerPath.setAttribute('fill', 'rgba(224,232,255,0.88)');
         marker.appendChild(markerPath);
         defs.appendChild(marker);
+
+        const glow = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        glow.setAttribute('id', 'edge-glow');
+        const blur = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+        blur.setAttribute('stdDeviation', '0.9');
+        blur.setAttribute('result', 'blur');
+        glow.appendChild(blur);
+        defs.appendChild(glow);
         edgeSvg.appendChild(defs);
 
         edges.forEach((e) => {
@@ -276,24 +508,38 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
           const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
           path.setAttribute('d', 'M ' + p1.x + ' ' + p1.y + ' Q ' + cx + ' ' + cy + ' ' + p2.x + ' ' + p2.y);
           const relation = String(e.type || '').toLowerCase();
-          path.setAttribute('stroke', relation === 'contains' ? 'rgba(181,199,255,0.75)' : 'rgba(255,255,255,0.5)');
-          path.setAttribute('stroke-width', relation === 'contains' ? '1.8' : '1.3');
+          path.setAttribute('stroke', relation === 'contains' ? 'rgba(181,199,255,0.92)' : 'rgba(235,242,255,0.74)');
+          path.setAttribute('stroke-width', relation === 'contains' ? '2.4' : '1.8');
           path.setAttribute('fill', 'none');
+          path.setAttribute('filter', 'url(#edge-glow)');
           path.setAttribute('marker-end', 'url(#arrow-head)');
           if (relation !== 'contains') {
-            path.setAttribute('stroke-dasharray', '5 4');
+            path.setAttribute('stroke-dasharray', '6 4');
           }
           edgeSvg.appendChild(path);
 
           if (relation) {
-            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.setAttribute('x', String(cx));
-            label.setAttribute('y', String(cy - 6));
-            label.setAttribute('fill', 'rgba(255,255,255,0.82)');
-            label.setAttribute('font-size', '10');
-            label.setAttribute('text-anchor', 'middle');
-            label.textContent = relation;
-            edgeSvg.appendChild(label);
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            t.setAttribute('x', String(cx));
+            t.setAttribute('y', String(cy - 8));
+            t.setAttribute('fill', '#e6ecff');
+            t.setAttribute('font-size', '10');
+            t.setAttribute('font-weight', '600');
+            t.setAttribute('text-anchor', 'middle');
+            t.textContent = relation;
+            const width = Math.max(44, relation.length * 7 + 12);
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', String(cx - (width / 2)));
+            rect.setAttribute('y', String(cy - 19));
+            rect.setAttribute('width', String(width));
+            rect.setAttribute('height', '16');
+            rect.setAttribute('rx', '4');
+            rect.setAttribute('fill', 'rgba(14,24,40,0.92)');
+            rect.setAttribute('stroke', 'rgba(186,205,255,0.45)');
+            g.appendChild(rect);
+            g.appendChild(t);
+            edgeLabelSvg.appendChild(g);
           }
         });
 

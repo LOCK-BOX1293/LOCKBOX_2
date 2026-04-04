@@ -4,6 +4,28 @@ import { GraphCanvas } from './components/GraphCanvas';
 import { InspectorPanel } from './components/InspectorPanel';
 import { fetchGraphOverview, fetchNodeDetails, fetchEdgeContext, askQuestion, fetchRepos, runFullIndex, getResolvedApiBase } from './api';
 
+function markdownToPlainText(value: string): string {
+  const src = String(value || '').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  return src
+    .replace(/\r/g, '')
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, '').trim())
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!?\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[\t ]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function App() {
   const [mode, setMode] = useState<'full' | 'focused'>('full');
   const [query, setQuery] = useState('');
@@ -261,8 +283,8 @@ function App() {
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Query Note ({answerData.intent})</div>
           <div style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{answerData.note_summary || answerData.answer}</div>
           <details style={{ marginTop: 8 }}>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View full markdown answer</summary>
-            <div style={{ fontSize: '0.9rem', whiteSpace: 'pre-wrap', marginTop: 8 }}>{answerData.answer}</div>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View full answer text</summary>
+            <div style={{ fontSize: '0.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', marginTop: 8 }}>{markdownToPlainText(answerData.answer || '')}</div>
           </details>
           <details style={{ marginTop: 8 }}>
             <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View query structure</summary>

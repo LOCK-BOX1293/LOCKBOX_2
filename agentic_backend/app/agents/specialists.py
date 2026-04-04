@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from app.llm.gemini import GeminiClient
 from app.models import Citation, RetrievedChunk
@@ -60,19 +61,49 @@ class VisualMapperAgent:
 
 
 def parse_answer_payload(raw: str, chunks: list[RetrievedChunk]) -> tuple[str, float, list[Citation]]:
+    def _markdown_to_plain_text(value: str) -> str:
+        src = str(value or "").replace("\r", "")
+        # Handle escaped newlines/tabs commonly returned by model JSON-in-text outputs.
+        src = src.replace("\\n", "\n").replace("\\t", "\t")
+        src = re.sub(r"```[\s\S]*?```", lambda m: m.group(0).replace("```", "").strip(), src)
+        src = re.sub(r"`([^`]+)`", r"\1", src)
+        src = re.sub(r"!\[([^\]]+)\]\(([^)]+)\)", r"\1", src)
+        src = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1", src)
+        src = re.sub(r"^#{1,6}\s*", "", src, flags=re.MULTILINE)
+        src = re.sub(r"#{1,6}\s*", "", src)
+        src = re.sub(r"^>\s?", "", src, flags=re.MULTILINE)
+        src = re.sub(r"\*\*([^*]+)\*\*", r"\1", src)
+        src = re.sub(r"__([^_]+)__", r"\1", src)
+        src = re.sub(r"\*([^*]+)\*", r"\1", src)
+        src = re.sub(r"_([^_]+)_", r"\1", src)
+        src = re.sub(r"^\s*[-*+]\s+", "", src, flags=re.MULTILINE)
+        src = re.sub(r"^\s*\d+\.\s+", "", src, flags=re.MULTILINE)
+        src = re.sub(r"<[^>]+>", "", src)
+        src = re.sub(r"[ \t]{2,}", " ", src)
+        src = re.sub(r"\n{3,}", "\n\n", src)
+        return src.strip()
+
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
         parsed = {
-            "summary": raw,
+            "summary": _markdown_to_plain_text(raw),
             "findings": [],
             "next_steps": [],
             "confidence": 0.25,
         }
 
-    summary = str(parsed.get("summary", "")).strip() or "No summary generated."
-    findings = parsed.get("findings") or []
-    next_steps = parsed.get("next_steps") or []
+    summary = _markdown_to_plain_text(str(parsed.get("summary", "")).strip()) or "No summary generated."
+    findings = [
+        _markdown_to_plain_text(str(item))
+        for item in (parsed.get("findings") or [])
+        if str(item).strip()
+    ]
+    next_steps = [
+        _markdown_to_plain_text(str(item))
+        for item in (parsed.get("next_steps") or [])
+        if str(item).strip()
+    ]
     confidence = float(parsed.get("confidence", 0.35))
 
     body = [summary]

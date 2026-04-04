@@ -89,6 +89,7 @@ export class QAPanel {
       .muted { color: var(--vscode-descriptionForeground); margin-top: 8px; }
       .chunk { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 10px; margin-top: 10px; }
       pre { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; }
+      .plain-text { white-space: pre-wrap; font-family: var(--vscode-font-family); font-size: 13px; line-height: 1.45; }
       .meta { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 6px; }
     </style>
   </head>
@@ -119,7 +120,8 @@ export class QAPanel {
 
       function markdownToPlainText(value) {
         const src = String(value || '');
-        return src
+        const unescaped = src.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+        return unescaped
           .replace(/\r/g, '')
           .replace(/\x60\x60\x60[\s\S]*?\x60\x60\x60/g, (m) => m.replace(/\x60\x60\x60/g, '').trim())
           .replace(/\x60([^\x60]+)\x60/g, '$1')
@@ -182,13 +184,13 @@ export class QAPanel {
 
           answerEl.innerHTML = '<div class="chunk">'
             + '<div class="meta">Direct Answer</div>'
-            + '<pre>' + escapeHtml(directAnswer.trim()) + '</pre>'
+            + '<div class="plain-text">' + escapeHtml(directAnswer.trim()) + '</div>'
             + '</div>';
 
           if (evidenceSummary.trim()) {
             answerEl.innerHTML += '<div class="chunk">'
               + '<div class="meta">Evidence Summary</div>'
-                + '<pre>' + escapeHtml(markdownToPlainText(evidenceSummary.trim())) + '</pre>'
+                + '<div class="plain-text">' + escapeHtml(markdownToPlainText(evidenceSummary.trim())) + '</div>'
               + '</div>';
           }
 

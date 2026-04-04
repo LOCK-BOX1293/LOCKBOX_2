@@ -2,7 +2,7 @@
   "name": "hackbite-vscode",
   "displayName": "Hackbite",
   "description": "Hackbite VS Code client for indexing, retrieval, and code graph workflows",
-  "version": "1.0.0",
+  "version": "1.41",
   "publisher": "hackbite",
   "engines": {
     "vscode": "^1.80.0"
