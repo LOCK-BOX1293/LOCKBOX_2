@@ -2,12 +2,26 @@ export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8081'
 
 let resolvedApiBase: string | null = null;
 
+function withDefaultPort(url: string, port: string): string {
+  try {
+    const u = new URL(url);
+    if (!u.port) u.port = port;
+    return u.toString().replace(/\/$/, '');
+  } catch {
+    return url;
+  }
+}
+
 function apiBaseCandidates(): string[] {
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const sameHost8081 = currentOrigin ? withDefaultPort(currentOrigin, '8081') : '';
   const list = [
+    sameHost8081,
     API_BASE,
     'http://localhost:8081',
     'http://127.0.0.1:8081',
     'http://localhost:8000',
+    'http://127.0.0.1:8000',
   ];
   return [...new Set(list.filter(Boolean))];
 }
