@@ -1,0 +1,20 @@
+{
+  "database": "hackbite3",
+  "collectionName": "chunks",
+  "name": "chunks_vector_v1",
+  "type": "vectorSearch",
+  "definition": {
+    "fields": [
+      {
+        "type": "vector",
+        "path": "embedding",
+        "numDimensions": 768,
+        "similarity": "cosine"
+      },
+      { "type": "filter", "path": "project_id" },
+      { "type": "filter", "path": "repo" },
+      { "type": "filter", "path": "language" },
+      { "type": "filter", "path": "file_path" }
+    ]
+  }
+}

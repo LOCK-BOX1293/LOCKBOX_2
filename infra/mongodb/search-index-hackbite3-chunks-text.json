@@ -1,0 +1,18 @@
+{
+  "database": "hackbite3",
+  "collectionName": "chunks",
+  "name": "chunks_text_v1",
+  "type": "search",
+  "definition": {
+    "mappings": {
+      "dynamic": false,
+      "fields": {
+        "content": { "type": "string" },
+        "symbol_name": { "type": "string" },
+        "file_path": { "type": "string" },
+        "repo": { "type": "string" },
+        "language": { "type": "string" }
+      }
+    }
+  }
+}
