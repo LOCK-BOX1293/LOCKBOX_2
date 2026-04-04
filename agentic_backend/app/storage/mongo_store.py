@@ -6,6 +6,7 @@ from typing import Any
 import certifi
 from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.collection import Collection
+from pymongo.errors import OperationFailure
 
 
 class MongoStore:
@@ -50,18 +51,28 @@ class MongoStore:
         return self.db.retrieval_runs
 
     def ensure_standard_indexes(self) -> None:
-        self.chunks.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING)], name="ix_chunks_repo_branch_path")
-        self.chunks.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("content_hash", ASCENDING)], name="ix_chunks_repo_branch_hash")
-        self.symbols.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING), ("name", ASCENDING)], name="ix_symbols_repo_branch_path_name")
-        self.files.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING), ("commit_sha", ASCENDING)], name="ix_files_repo_branch_path_commit")
-        self.index_jobs.create_index([("repo_id", ASCENDING), ("started_at", DESCENDING)], name="ix_jobs_repo_started")
+        def _safe_index(coll: Collection, keys: list[tuple[str, int]], **kwargs: Any) -> None:
+            try:
+                coll.create_index(keys, **kwargs)
+            except OperationFailure as exc:
+                msg = str(exc)
+                # Seeded DBs may already have equivalent indexes with different names.
+                if "IndexOptionsConflict" in msg or "already exists with a different name" in msg:
+                    return
+                raise
 
-        self.files.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("file_path", ASCENDING)], unique=True, name="ux_files_repo_branch_commit_path")
-        self.chunks.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("chunk_id", ASCENDING)], unique=True, name="ux_chunks_repo_branch_commit_chunk")
-        self.symbols.create_index([("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("symbol_id", ASCENDING)], unique=True, name="ux_symbols_repo_branch_commit_symbol")
+        _safe_index(self.chunks, [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING)], name="ix_chunks_repo_branch_path")
+        _safe_index(self.chunks, [("repo_id", ASCENDING), ("branch", ASCENDING), ("content_hash", ASCENDING)], name="ix_chunks_repo_branch_hash")
+        _safe_index(self.symbols, [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING), ("name", ASCENDING)], name="ix_symbols_repo_branch_path_name")
+        _safe_index(self.files, [("repo_id", ASCENDING), ("branch", ASCENDING), ("file_path", ASCENDING), ("commit_sha", ASCENDING)], name="ix_files_repo_branch_path_commit")
+        _safe_index(self.index_jobs, [("repo_id", ASCENDING), ("started_at", DESCENDING)], name="ix_jobs_repo_started")
 
-        self.sessions.create_index([("ttl_expires_at", ASCENDING)], expireAfterSeconds=0, name="ttl_sessions")
-        self.index_jobs.create_index([("finished_at", ASCENDING)], expireAfterSeconds=60 * 60 * 24 * 14, name="ttl_jobs_14d")
+        _safe_index(self.files, [("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("file_path", ASCENDING)], unique=True, name="ux_files_repo_branch_commit_path")
+        _safe_index(self.chunks, [("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("chunk_id", ASCENDING)], unique=True, name="ux_chunks_repo_branch_commit_chunk")
+        _safe_index(self.symbols, [("repo_id", ASCENDING), ("branch", ASCENDING), ("commit_sha", ASCENDING), ("symbol_id", ASCENDING)], unique=True, name="ux_symbols_repo_branch_commit_symbol")
+
+        _safe_index(self.sessions, [("ttl_expires_at", ASCENDING)], expireAfterSeconds=0, name="ttl_sessions")
+        _safe_index(self.index_jobs, [("finished_at", ASCENDING)], expireAfterSeconds=60 * 60 * 24 * 14, name="ttl_jobs_14d")
 
     def ensure_search_indexes(self, embedding_dim: int) -> None:
         try:

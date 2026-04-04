@@ -27,9 +27,11 @@ class SemanticChunker:
                 chunks.append(
                     {
                         "repo_id": repo_id,
+                        "project_id": repo_id,
                         "branch": branch,
                         "commit_sha": commit_sha,
                         "chunk_id": deterministic_chunk_id(repo_id, file_path, start, end, c_hash),
+                        "chunk_key": f"{commit_sha}:{file_path}:{start}-{end}:{c_hash[:10]}",
                         "file_path": file_path,
                         "chunk_index": i,
                         "start_line": start,
@@ -59,9 +61,11 @@ class SemanticChunker:
             chunks.append(
                 {
                     "repo_id": repo_id,
+                    "project_id": repo_id,
                     "branch": branch,
                     "commit_sha": commit_sha,
                     "chunk_id": deterministic_chunk_id(repo_id, file_path, start_line, end_line, c_hash),
+                    "chunk_key": f"{commit_sha}:{file_path}:{start_line}-{end_line}:{c_hash[:10]}",
                     "file_path": file_path,
                     "chunk_index": chunk_index,
                     "start_line": start_line,

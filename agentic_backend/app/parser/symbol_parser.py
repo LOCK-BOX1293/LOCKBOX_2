@@ -38,11 +38,14 @@ class SymbolParser:
         end_line: int,
     ) -> dict:
         symbol_id = stable_hash(f"{repo_id}:{branch}:{commit_sha}:{file_path}:{symbol_type}:{name}:{start_line}:{end_line}")
+        symbol_fqn = f"{commit_sha}:{file_path}:{name}:{start_line}:{end_line}"
         return {
             "repo_id": repo_id,
+            "project_id": repo_id,
             "branch": branch,
             "commit_sha": commit_sha,
             "symbol_id": symbol_id,
+            "symbol_fqn": symbol_fqn,
             "file_path": file_path,
             "symbol_type": symbol_type,
             "name": name,

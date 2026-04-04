@@ -78,15 +78,24 @@ def jobs_status(repo_id: str) -> dict:
     return {"repo_id": repo_id, "jobs": jobs}
 
 
-@app.get("/graph/node/{node_id}")
+@app.get("/graph/node/{node_id:path}")
 def graph_node(repo_id: str, branch: str, node_type: str, node_id: str) -> dict:
     if node_type == "file":
         doc = store.files.find_one({"repo_id": repo_id, "branch": branch, "file_path": node_id}, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="file node not found")
+        code = doc.get("content", "")
+        if not code:
+            chunk_docs = list(
+                store.chunks.find(
+                    {"repo_id": repo_id, "branch": branch, "file_path": node_id},
+                    {"_id": 0, "start_line": 1, "content": 1},
+                ).sort("start_line", 1)
+            )
+            code = "\n\n".join(c.get("content", "") for c in chunk_docs if c.get("content"))
         return {
             "node": {"id": node_id, "type": "file"},
-            "code": doc.get("content", ""),
+            "code": code,
             "metadata": {
                 "language": doc.get("language"),
                 "size_bytes": doc.get("size_bytes"),

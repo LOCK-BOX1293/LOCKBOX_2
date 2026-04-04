@@ -94,6 +94,7 @@ class IndexingPipeline:
                     file_docs.append(
                         {
                             "repo_id": repo_id,
+                            "project_id": repo_id,
                             "branch": branch,
                             "commit_sha": commit_sha,
                             "file_path": f["file_path"],
