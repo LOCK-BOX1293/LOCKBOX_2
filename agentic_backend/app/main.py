@@ -426,7 +426,8 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
     # Filter out import nodes for initial overview (major source of noise)
     important = [s for s in all_symbols if (s.get("symbol_type") or "") != "import"]
 
-    # Keep class/module symbols only for high-level overview.
+    # Keep class/module symbols for overview, but ensure each file has at least
+    # one anchor symbol so visual mapping does not look disconnected.
     chosen: list[dict] = []
     important_sorted = sorted(
         important,
@@ -438,13 +439,59 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
         ),
     )
 
-    for s in important_sorted:
-        t = (s.get("symbol_type") or "").lower()
-        if t not in {"class", "module"}:
-            continue
-        chosen.append(s)
-
     max_symbol_nodes = max(40, MAX_NODES - len(file_paths))
+    selected_ids: set[str] = set()
+
+    by_file: dict[str, list[dict]] = {}
+    for s in important_sorted:
+        fp = str(s.get("file_path") or "")
+        if not fp:
+            continue
+        by_file.setdefault(fp, []).append(s)
+
+    # Pass 1: per-file anchor (class/module preferred, else first function).
+    for fp in file_paths:
+        candidates = by_file.get(fp) or []
+        anchor = next(
+            (
+                s
+                for s in candidates
+                if str(s.get("symbol_type") or "").lower() in {"class", "module"}
+            ),
+            None,
+        )
+        if anchor is None:
+            anchor = next(
+                (
+                    s
+                    for s in candidates
+                    if str(s.get("symbol_type") or "").lower() == "function"
+                ),
+                None,
+            )
+        if anchor is None:
+            continue
+        sid = anchor.get("symbol_id")
+        if sid and sid not in selected_ids:
+            chosen.append(anchor)
+            selected_ids.add(sid)
+        if len(chosen) >= max_symbol_nodes:
+            break
+
+    # Pass 2: add globally important class/module/function symbols up to cap.
+    if len(chosen) < max_symbol_nodes:
+        for s in important_sorted:
+            t = str(s.get("symbol_type") or "").lower()
+            if t not in {"class", "module", "function"}:
+                continue
+            sid = s.get("symbol_id")
+            if not sid or sid in selected_ids:
+                continue
+            chosen.append(s)
+            selected_ids.add(sid)
+            if len(chosen) >= max_symbol_nodes:
+                break
+
     chosen = chosen[:max_symbol_nodes]
     kept_symbol_ids = {s.get("symbol_id") for s in chosen if s.get("symbol_id")}
 

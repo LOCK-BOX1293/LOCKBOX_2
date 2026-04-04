@@ -1,0 +1,7 @@
+**/.git/**
+**/.DS_Store
+**/.vscode/**
+**/.vscode-test/**
+src/**
+tsconfig.json
+node_modules/**/.cache/**

@@ -12,12 +12,28 @@ from app.storage.mongo_store import MongoStore
 
 class RetrievalProvider(ABC):
     @abstractmethod
-    def retrieve(self, project_id: str, query: str, top_k: int) -> RetrievalResult:
+    def retrieve(
+        self,
+        project_id: str,
+        branch: str,
+        query: str,
+        top_k: int,
+        path_prefix: str | None = None,
+        include_tests: bool = False,
+    ) -> RetrievalResult:
         raise NotImplementedError
 
 
 class EmptyRetrievalProvider(RetrievalProvider):
-    def retrieve(self, project_id: str, query: str, top_k: int) -> RetrievalResult:
+    def retrieve(
+        self,
+        project_id: str,
+        branch: str,
+        query: str,
+        top_k: int,
+        path_prefix: str | None = None,
+        include_tests: bool = False,
+    ) -> RetrievalResult:
         return RetrievalResult(chunks=[])
 
 
@@ -29,14 +45,22 @@ class LocalHybridRetrievalProvider(RetrievalProvider):
         store = MongoStore(settings.mongodb_uri, settings.mongodb_db)
         self.hybrid = HybridRetriever(settings=settings, store=store)
 
-    def retrieve(self, project_id: str, query: str, top_k: int) -> RetrievalResult:
+    def retrieve(
+        self,
+        project_id: str,
+        branch: str,
+        query: str,
+        top_k: int,
+        path_prefix: str | None = None,
+        include_tests: bool = False,
+    ) -> RetrievalResult:
         payload = self.hybrid.query(
             repo_id=project_id,
-            branch="main",
+            branch=branch,
             q=query,
             top_k=top_k,
-            path_prefix="src/",
-            include_tests=False,
+            path_prefix=path_prefix,
+            include_tests=include_tests,
             include_graph=True,
         )
         chunks = [
@@ -58,12 +82,27 @@ class HttpRetrievalProvider(RetrievalProvider):
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
 
-    def retrieve(self, project_id: str, query: str, top_k: int) -> RetrievalResult:
+    def retrieve(
+        self,
+        project_id: str,
+        branch: str,
+        query: str,
+        top_k: int,
+        path_prefix: str | None = None,
+        include_tests: bool = False,
+    ) -> RetrievalResult:
         endpoint = f"{self.base_url}/retrieve"
         req = request.Request(
             endpoint,
             data=json.dumps(
-                {"project_id": project_id, "query": query, "top_k": top_k}
+                {
+                    "project_id": project_id,
+                    "branch": branch,
+                    "query": query,
+                    "top_k": top_k,
+                    "path_prefix": path_prefix,
+                    "include_tests": include_tests,
+                }
             ).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",

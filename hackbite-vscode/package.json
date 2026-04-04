@@ -1,0 +1,150 @@
+{
+  "name": "hackbite-vscode",
+  "displayName": "Hackbite",
+  "description": "Hackbite VS Code client for indexing, retrieval, and code graph workflows",
+  "version": "1.41",
+  "publisher": "hackbite",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hackbite.indexWorkspace",
+        "title": "Hackbite: Index Workspace"
+      },
+      {
+        "command": "hackbite.ask",
+        "title": "Hackbite: Ask a Question"
+      },
+      {
+        "command": "hackbite.askPrefilled",
+        "title": "Hackbite: Ask About Symbol"
+      },
+      {
+        "command": "hackbite.openGraph",
+        "title": "Hackbite: Open Code Map"
+      },
+      {
+        "command": "hackbite.refreshSymbolTree",
+        "title": "Hackbite: Refresh Symbol Tree"
+      },
+      {
+        "command": "hackbite.revealSymbol",
+        "title": "Hackbite: Reveal Symbol"
+      },
+      {
+        "command": "hackbite.showLogs",
+        "title": "Hackbite: Show Logs"
+      },
+      {
+        "command": "hackbite.selectRepo",
+        "title": "Hackbite: Select Target Repository"
+      },
+      {
+        "command": "hackbite.clearRepoSelection",
+        "title": "Hackbite: Use Workspace Repository"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "hackbite.ask",
+        "key": "ctrl+shift+h"
+      },
+      {
+        "command": "hackbite.openGraph",
+        "key": "ctrl+shift+g"
+      }
+    ],
+    "configuration": {
+      "title": "Hackbite",
+      "properties": {
+        "hackbite.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8081",
+          "description": "FastAPI backend URL"
+        },
+        "hackbite.repoBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "Default git branch if branch auto-detection fails"
+        },
+        "hackbite.targetRepoPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to the repository you want Hackbite to index and query"
+        },
+        "hackbite.autoIndex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Attempt indexing when workspace opens and no successful index exists"
+        },
+        "hackbite.indexTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "minimum": 60000,
+          "description": "Timeout for index API calls in milliseconds"
+        },
+        "hackbite.role": {
+          "type": "string",
+          "default": "backend",
+          "enum": [
+            "backend",
+            "frontend",
+            "security",
+            "devops"
+          ],
+          "description": "Default role for ask flows"
+        },
+        "hackbite.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Optional API key sent as X-API-Key"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hackbite",
+          "title": "Hackbite",
+          "icon": "media/hackbite.svg"
+        }
+      ]
+    },
+    "views": {
+      "hackbite": [
+        {
+          "id": "hackbite.symbolTree",
+          "name": "Code Symbols"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "hackbite.refreshSymbolTree",
+          "when": "view == hackbite.symbolTree",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.8.3"
+  }
+}

@@ -25,6 +25,9 @@ class AskRequest(BaseModel):
     session_id: str = Field(min_length=1)
     query: str = Field(min_length=1)
     user_role: str = "backend"
+    branch: str = Field(default="main", min_length=1)
+    path_prefix: str | None = None
+    include_tests: bool = False
 
 
 class AskResponse(BaseModel):
