@@ -31,6 +31,12 @@ def health() -> dict:
     }
 
 
+@app.get("/repos")
+def list_repos() -> dict:
+    repos = list(store.repos.find({}, {"_id": 0}).sort("updated_at", -1).limit(200))
+    return {"repos": repos}
+
+
 @app.post("/index/full")
 def index_full(payload: IndexRequest) -> dict:
     try:
@@ -242,7 +248,64 @@ def edge_context(
         {"_id": 0},
     )
     if not edge:
-        raise HTTPException(status_code=404, detail="edge not found")
+        # Support synthetic 'contains' edges returned by graph overview (file -> symbol)
+        from_is_file = bool(
+            store.files.find_one(
+                {"repo_id": repo_id, "branch": branch, "file_path": from_symbol_id},
+                {"_id": 1},
+            )
+        )
+        to_is_file = bool(
+            store.files.find_one(
+                {"repo_id": repo_id, "branch": branch, "file_path": to_symbol_id},
+                {"_id": 1},
+            )
+        )
+        if from_is_file and not to_is_file:
+            sym = store.symbols.find_one(
+                {
+                    "repo_id": repo_id,
+                    "branch": branch,
+                    "symbol_id": to_symbol_id,
+                    "file_path": from_symbol_id,
+                },
+                {"_id": 0, "symbol_id": 1, "file_path": 1},
+            )
+            if sym:
+                edge = {
+                    "repo_id": repo_id,
+                    "branch": branch,
+                    "from_symbol_id": from_symbol_id,
+                    "to_symbol_id": to_symbol_id,
+                    "edge_type": "contains",
+                    "weight": 1.0,
+                }
+        if not edge:
+            raise HTTPException(status_code=404, detail="edge not found")
+
+    def _file_payload(file_path: str) -> dict:
+        f = store.files.find_one(
+            {"repo_id": repo_id, "branch": branch, "file_path": file_path},
+            {"_id": 0},
+        )
+        if not f:
+            return {"file_path": file_path, "code": "", "metadata": {}}
+        chunks = list(
+            store.chunks.find(
+                {"repo_id": repo_id, "branch": branch, "file_path": file_path},
+                {"_id": 0, "start_line": 1, "content": 1},
+            ).sort("start_line", 1)
+        )
+        code = "\n\n".join(c.get("content", "") for c in chunks if c.get("content"))
+        return {
+            "file_path": file_path,
+            "code": code,
+            "metadata": {
+                "language": f.get("language"),
+                "size_bytes": f.get("size_bytes"),
+                "commit_sha": f.get("commit_sha"),
+            },
+        }
 
     def _symbol_payload(symbol_id: str) -> dict:
         s = store.symbols.find_one(
@@ -269,10 +332,28 @@ def edge_context(
             "code": (c or {}).get("content", ""),
         }
 
+    # Support both symbol-symbol and file-symbol contains edges.
+    from_is_file = bool(
+        store.files.find_one(
+            {"repo_id": repo_id, "branch": branch, "file_path": from_symbol_id},
+            {"_id": 1},
+        )
+    )
+    to_is_file = bool(
+        store.files.find_one(
+            {"repo_id": repo_id, "branch": branch, "file_path": to_symbol_id},
+            {"_id": 1},
+        )
+    )
+
     return {
         "edge": edge,
-        "from": _symbol_payload(from_symbol_id),
-        "to": _symbol_payload(to_symbol_id),
+        "from": _file_payload(from_symbol_id)
+        if from_is_file
+        else _symbol_payload(from_symbol_id),
+        "to": _file_payload(to_symbol_id)
+        if to_is_file
+        else _symbol_payload(to_symbol_id),
     }
 
 

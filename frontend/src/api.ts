@@ -1,5 +1,25 @@
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8081';
 
+export async function fetchRepos() {
+  const res = await fetch(`${API_BASE}/repos`);
+  if (!res.ok) throw new Error('Failed to fetch repos');
+  return res.json();
+}
+
+export async function runFullIndex(repoPath: string, repoId: string, branch: string = 'main') {
+  const res = await fetch(`${API_BASE}/index/full`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repo_path: repoPath,
+      repo_id: repoId,
+      branch,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to run full index');
+  return res.json();
+}
+
 export async function fetchGraphOverview(repoId: string, branch: string = 'main', mode: 'full' | 'focused' = 'full', query?: string) {
   const url = new URL(`${API_BASE}/graph/overview`);
   url.searchParams.append('repo_id', repoId);

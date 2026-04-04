@@ -53,6 +53,20 @@ The frontend API client reads this in `src/api.ts`.
 
 ## 3) API contracts the frontend should call
 
+## New conversation / repo selection flow
+
+At app start, frontend should:
+
+1. call `GET /repos` and list available indexed repositories
+2. allow user to select one repo
+3. provide optional "bring your own" section:
+   - `repo_id`
+   - local `repo_path`
+   - call `POST /index/full`
+4. once indexing completes, load repo graph via `GET /graph/overview?mode=full`
+
+This flow is now wired in `src/App.tsx`.
+
 ## A. Ask (agent orchestration)
 
 `POST /ask`
