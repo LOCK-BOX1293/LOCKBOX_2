@@ -142,35 +142,53 @@ class DBRepository:
 
     def bulk_upsert_chunks(self, chunks: List[Chunk]):
         if not chunks: return
-        ops = [
-            UpdateOne(
-                {
-                    "repo_id": c.repo_id, 
-                    "branch": c.branch, 
-                    "commit_sha": c.commit_sha,
-                    "chunk_id": c.chunk_id
-                },
-                {"$set": c.model_dump()},
-                upsert=True
-            ) for c in chunks
-        ]
+        ops = []
+        for c in chunks:
+            ops.append(
+                UpdateOne(
+                    {
+                        # Align with Hackbite3 unique index ux_chunk_project_key.
+                        "project_id": c.repo_id,
+                        "chunk_key": c.chunk_id,
+                    },
+                    {
+                        "$set": {
+                            **c.model_dump(),
+                            # Backfill compatibility fields used by existing Atlas unique/search indexes.
+                            "project_id": c.repo_id,
+                            "chunk_key": c.chunk_id,
+                            "symbol_name": c.symbol_refs[0] if c.symbol_refs else None,
+                        }
+                    },
+                    upsert=True
+                )
+            )
         if ops:
             self.chunks.bulk_write(ops, ordered=False)
 
     def bulk_upsert_symbols(self, symbols: List[Symbol]):
         if not symbols: return
-        ops = [
-            UpdateOne(
-                {
-                    "repo_id": s.repo_id, 
-                    "branch": s.branch, 
-                    "commit_sha": s.commit_sha,
-                    "symbol_id": s.symbol_id
-                },
-                {"$set": s.model_dump()},
-                upsert=True
-            ) for s in symbols
-        ]
+        ops = []
+        for s in symbols:
+            symbol_fqn = f"{s.file_path}:{s.name}:{s.start_line}"
+            ops.append(
+                UpdateOne(
+                    {
+                        # Align with Hackbite3 unique index ux_symbol_project_fqn.
+                        "project_id": s.repo_id,
+                        "symbol_fqn": symbol_fqn,
+                    },
+                    {
+                        "$set": {
+                            **s.model_dump(),
+                            # Backfill compatibility fields used by existing Atlas unique indexes.
+                            "project_id": s.repo_id,
+                            "symbol_fqn": symbol_fqn,
+                        }
+                    },
+                    upsert=True
+                )
+            )
         if ops:
             self.symbols.bulk_write(ops, ordered=False)
 
@@ -184,7 +202,13 @@ class DBRepository:
                     "commit_sha": e.commit_sha,
                     "chunk_id": e.chunk_id
                 },
-                {"$set": e.model_dump()},
+                {
+                    "$set": {
+                        **e.model_dump(),
+                        # Keep compatibility with schemas/indexes that scope by project_id.
+                        "project_id": e.repo_id,
+                    }
+                },
                 upsert=True
             ) for e in embeddings
         ]

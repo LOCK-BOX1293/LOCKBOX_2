@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db: str = "hackbite2"
     
-    embedding_provider: Literal["local", "openai", "vertex"] = "local"
+    embedding_provider: Literal["local", "openai", "vertex", "google"] = "local"
     embedding_model: str = "all-MiniLM-L6-v2"  # default for local sentence-transformers
     embedding_dim: int = 384
     embedding_batch_size: int = 100
@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     # OpenAI specific (if selected)
     openai_api_key: Optional[str] = None
+    
+    # Google specific
+    google_api_key: Optional[str] = None
     
     model_config = SettingsConfigDict(
         env_file=".env", 
