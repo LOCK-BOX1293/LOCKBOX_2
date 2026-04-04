@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { GraphCanvas } from './components/GraphCanvas';
 import { InspectorPanel } from './components/InspectorPanel';
-import { fetchGraphOverview, fetchNodeDetails, fetchEdgeContext, askQuestion, fetchRepos, runFullIndex } from './api';
+import { fetchGraphOverview, fetchNodeDetails, fetchEdgeContext, askQuestion, fetchRepos, runFullIndex, getResolvedApiBase } from './api';
 
 function App() {
   const [mode, setMode] = useState<'full' | 'focused'>('full');
@@ -23,6 +23,26 @@ function App() {
   const [repoList, setRepoList] = useState<any[]>([]);
   const [repoPathInput, setRepoPathInput] = useState('');
   const [newRepoId, setNewRepoId] = useState('');
+  const [repoError, setRepoError] = useState<string | null>(null);
+
+  const loadRepos = async () => {
+    try {
+      setRepoError(null);
+      const data = await fetchRepos();
+      const repos = data?.repos || [];
+      setRepoList(repos);
+      if (repos.length > 0 && !selectedRepo) {
+        const first = repos[0].repo_id || repos[0].id;
+        if (first) setSelectedRepo(first);
+      }
+      if (repos.length === 0) {
+        setRepoError(`Connected to ${getResolvedApiBase()} but no repos found in database.`);
+      }
+    } catch (e) {
+      console.error('Failed to load repos', e);
+      setRepoError(`Failed to load repos from ${getResolvedApiBase()}. Is backend running and CORS enabled?`);
+    }
+  };
 
   // Load initial graph
   useEffect(() => {
@@ -30,19 +50,8 @@ function App() {
   }, [mode]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchRepos();
-        const repos = data?.repos || [];
-        setRepoList(repos);
-        if (repos.length > 0 && !selectedRepo) {
-          const first = repos[0].repo_id || repos[0].id;
-          if (first) setSelectedRepo(first);
-        }
-      } catch (e) {
-        console.error('Failed to load repos', e);
-      }
-    })();
+    loadRepos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadGraph = async (forcedQuery?: string) => {
@@ -126,6 +135,7 @@ function App() {
     <div className="layout-container">
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <strong>Repository</strong>
+        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>API: {getResolvedApiBase()}</span>
         <select
           value={selectedRepo || ''}
           onChange={(e) => {
@@ -146,6 +156,14 @@ function App() {
           })}
         </select>
 
+        <button
+          className="nav-button"
+          onClick={loadRepos}
+          title="Reload repositories"
+        >
+          Refresh Repos
+        </button>
+
         <span style={{ color: 'var(--text-muted)' }}>or bring your own:</span>
         <input
           placeholder="repo id"
@@ -165,8 +183,7 @@ function App() {
             if (!newRepoId.trim() || !repoPathInput.trim()) return;
             try {
               await runFullIndex(repoPathInput.trim(), newRepoId.trim(), branch);
-              const data = await fetchRepos();
-              setRepoList(data?.repos || []);
+              await loadRepos();
               setSelectedRepo(newRepoId.trim());
               setMode('full');
               setTimeout(() => loadGraph(), 0);
@@ -178,6 +195,11 @@ function App() {
           Index Repo
         </button>
       </div>
+      {repoError && (
+        <div style={{ padding: '8px 16px', color: '#ff8a80', borderBottom: '1px solid var(--border-color)', fontSize: 13 }}>
+          {repoError}
+        </div>
+      )}
 
       <Toolbar 
         mode={mode} 

@@ -1,13 +1,48 @@
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8081';
 
+let resolvedApiBase: string | null = null;
+
+function apiBaseCandidates(): string[] {
+  const list = [
+    API_BASE,
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
+    'http://localhost:8000',
+  ];
+  return [...new Set(list.filter(Boolean))];
+}
+
+async function requestJson(path: string, init?: RequestInit): Promise<any> {
+  const bases = resolvedApiBase ? [resolvedApiBase, ...apiBaseCandidates()] : apiBaseCandidates();
+
+  let lastError: unknown = null;
+  for (const base of [...new Set(bases)]) {
+    try {
+      const res = await fetch(`${base}${path}`, init);
+      if (!res.ok) {
+        lastError = new Error(`HTTP ${res.status} for ${base}${path}`);
+        continue;
+      }
+      resolvedApiBase = base;
+      return res.json();
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  throw lastError || new Error(`Failed request for ${path}`);
+}
+
+export function getResolvedApiBase() {
+  return resolvedApiBase || API_BASE;
+}
+
 export async function fetchRepos() {
-  const res = await fetch(`${API_BASE}/repos`);
-  if (!res.ok) throw new Error('Failed to fetch repos');
-  return res.json();
+  return requestJson('/repos');
 }
 
 export async function runFullIndex(repoPath: string, repoId: string, branch: string = 'main') {
-  const res = await fetch(`${API_BASE}/index/full`, {
+  return requestJson('/index/full', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -16,12 +51,11 @@ export async function runFullIndex(repoPath: string, repoId: string, branch: str
       branch,
     }),
   });
-  if (!res.ok) throw new Error('Failed to run full index');
-  return res.json();
 }
 
 export async function fetchGraphOverview(repoId: string, branch: string = 'main', mode: 'full' | 'focused' = 'full', query?: string) {
-  const url = new URL(`${API_BASE}/graph/overview`);
+  const base = getResolvedApiBase();
+  const url = new URL(`${base}/graph/overview`);
   url.searchParams.append('repo_id', repoId);
   url.searchParams.append('branch', branch);
   url.searchParams.append('mode', mode);
@@ -34,7 +68,8 @@ export async function fetchGraphOverview(repoId: string, branch: string = 'main'
 }
 
 export async function fetchNodeDetails(nodeId: string, repoId: string, type: 'file' | 'symbol', branch: string = 'main') {
-  const url = new URL(`${API_BASE}/graph/node/${encodeURIComponent(nodeId)}`);
+  const base = getResolvedApiBase();
+  const url = new URL(`${base}/graph/node/${encodeURIComponent(nodeId)}`);
   url.searchParams.append('repo_id', repoId);
   url.searchParams.append('branch', branch);
   url.searchParams.append('node_type', type);
@@ -44,7 +79,8 @@ export async function fetchNodeDetails(nodeId: string, repoId: string, type: 'fi
 }
 
 export async function fetchEdgeContext(fromSymbolId: string, toSymbolId: string, repoId: string, branch: string = 'main') {
-  const url = new URL(`${API_BASE}/graph/edge-context`);
+  const base = getResolvedApiBase();
+  const url = new URL(`${base}/graph/edge-context`);
   url.searchParams.append('repo_id', repoId);
   url.searchParams.append('branch', branch);
   url.searchParams.append('from_symbol_id', fromSymbolId);
@@ -55,7 +91,7 @@ export async function fetchEdgeContext(fromSymbolId: string, toSymbolId: string,
 }
 
 export async function askQuestion(repoId: string, query: string, sessionId: string = 'default', userRole: string = 'backend') {
-  const res = await fetch(`${API_BASE}/ask`, {
+  const payload = await requestJson('/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -65,6 +101,5 @@ export async function askQuestion(repoId: string, query: string, sessionId: stri
       user_role: userRole
     })
   });
-  if (!res.ok) throw new Error('Failed to ask question');
-  return res.json();
+  return payload;
 }
