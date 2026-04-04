@@ -14,7 +14,11 @@ class HybridRetriever:
         self.settings = settings
         self.store = store
         self.embedder = EmbeddingClient(
-            build_provider(settings.embedding_provider, settings.embedding_model, settings.embedding_dim),
+            build_provider(
+                settings.embedding_provider,
+                settings.embedding_model,
+                settings.embedding_dim,
+            ),
             batch_size=settings.embedding_batch_size,
         )
 
@@ -40,7 +44,9 @@ class HybridRetriever:
 
         confidence = 0.0
         if ranked:
-            confidence = max(0.05, min(0.99, sum(r["score"] for r in ranked) / len(ranked)))
+            confidence = max(
+                0.05, min(0.99, sum(r["score"] for r in ranked) / len(ranked))
+            )
 
         return {
             "chunks": [
@@ -58,7 +64,15 @@ class HybridRetriever:
             "confidence": confidence,
         }
 
-    def _vector_search(self, repo_id: str, branch: str, q: str, top_k: int, lang: str | None, path_prefix: str | None) -> list[dict]:
+    def _vector_search(
+        self,
+        repo_id: str,
+        branch: str,
+        q: str,
+        top_k: int,
+        lang: str | None,
+        path_prefix: str | None,
+    ) -> list[dict]:
         q_vec = self.embedder.embed_with_retry([q])[0]
         pipeline = [
             {
@@ -68,7 +82,13 @@ class HybridRetriever:
                     "queryVector": q_vec,
                     "numCandidates": max(30, top_k * 6),
                     "limit": top_k,
-                    "filter": {"repo_id": repo_id, "branch": branch},
+                    "filter": {
+                        "$and": [
+                            {"repo_id": repo_id},
+                            {"branch": branch},
+                            {"embedding_dim": len(q_vec)},
+                        ]
+                    },
                 }
             },
             {
@@ -115,13 +135,22 @@ class HybridRetriever:
             d["reason"] = "vector-match"
         return docs
 
-    def _vector_fallback(self, repo_id: str, branch: str, q_vec: list[float]) -> list[dict]:
-        embs = list(self.store.embeddings.find({"repo_id": repo_id, "branch": branch}, {"_id": 0}))
+    def _vector_fallback(
+        self, repo_id: str, branch: str, q_vec: list[float]
+    ) -> list[dict]:
+        embs = list(
+            self.store.embeddings.find(
+                {"repo_id": repo_id, "branch": branch, "embedding_dim": len(q_vec)},
+                {"_id": 0},
+            )
+        )
         if not embs:
             return []
         chunk_map = {
             c["chunk_id"]: c
-            for c in self.store.chunks.find({"repo_id": repo_id, "branch": branch}, {"_id": 0})
+            for c in self.store.chunks.find(
+                {"repo_id": repo_id, "branch": branch}, {"_id": 0}
+            )
         }
 
         docs: list[dict] = []
@@ -148,12 +177,24 @@ class HybridRetriever:
         docs.sort(key=lambda x: x["score"], reverse=True)
         return docs
 
-    def _text_search(self, repo_id: str, branch: str, q: str, top_k: int, lang: str | None, path_prefix: str | None) -> list[dict]:
+    def _text_search(
+        self,
+        repo_id: str,
+        branch: str,
+        q: str,
+        top_k: int,
+        lang: str | None,
+        path_prefix: str | None,
+    ) -> list[dict]:
         def _fallback_text() -> list[dict]:
             rex = re.compile(re.escape(q), re.IGNORECASE)
             fallback_docs: list[dict] = []
-            for c in self.store.chunks.find({"repo_id": repo_id, "branch": branch}, {"_id": 0}):
-                m = rex.search(c.get("content", "")) or rex.search(c.get("file_path", ""))
+            for c in self.store.chunks.find(
+                {"repo_id": repo_id, "branch": branch}, {"_id": 0}
+            ):
+                m = rex.search(c.get("content", "")) or rex.search(
+                    c.get("file_path", "")
+                )
                 if not m:
                     continue
                 score = 1.0 / (1.0 + max(0, m.start()))
@@ -166,7 +207,9 @@ class HybridRetriever:
                 "$search": {
                     "index": "chunks_text_v1",
                     "compound": {
-                        "must": [{"text": {"query": q, "path": ["content", "file_path"]}}],
+                        "must": [
+                            {"text": {"query": q, "path": ["content", "file_path"]}}
+                        ],
                         "filter": [
                             {"equals": {"path": "repo_id", "value": repo_id}},
                             {"equals": {"path": "branch", "value": branch}},
@@ -200,7 +243,9 @@ class HybridRetriever:
             d["reason"] = "text-match"
         return docs
 
-    def _apply_filters(self, docs: list[dict], lang: str | None, path_prefix: str | None) -> list[dict]:
+    def _apply_filters(
+        self, docs: list[dict], lang: str | None, path_prefix: str | None
+    ) -> list[dict]:
         out = docs
         if lang:
             out = [d for d in out if d.get("language") == lang]
@@ -208,7 +253,9 @@ class HybridRetriever:
             out = [d for d in out if d.get("file_path", "").startswith(path_prefix)]
         return out
 
-    def _fuse(self, vector_hits: list[dict], text_hits: list[dict], top_k: int) -> list[dict]:
+    def _fuse(
+        self, vector_hits: list[dict], text_hits: list[dict], top_k: int
+    ) -> list[dict]:
         bucket: dict[str, dict] = {}
         rank_map: defaultdict[str, float] = defaultdict(float)
 
@@ -232,7 +279,9 @@ class HybridRetriever:
         fused.sort(key=lambda x: x["score"], reverse=True)
         return fused[: max(top_k * 2, top_k)]
 
-    def _expand_graph(self, repo_id: str, branch: str, docs: list[dict], top_k: int) -> list[dict]:
+    def _expand_graph(
+        self, repo_id: str, branch: str, docs: list[dict], top_k: int
+    ) -> list[dict]:
         symbol_ids = set()
         for d in docs:
             symbol_ids.update(d.get("symbol_refs", []))
@@ -244,7 +293,10 @@ class HybridRetriever:
             {
                 "repo_id": repo_id,
                 "branch": branch,
-                "$or": [{"from_symbol_id": {"$in": list(symbol_ids)}}, {"to_symbol_id": {"$in": list(symbol_ids)}}],
+                "$or": [
+                    {"from_symbol_id": {"$in": list(symbol_ids)}},
+                    {"to_symbol_id": {"$in": list(symbol_ids)}},
+                ],
             },
             {"_id": 0, "from_symbol_id": 1, "to_symbol_id": 1},
         ):
@@ -253,7 +305,11 @@ class HybridRetriever:
 
         extra = list(
             self.store.chunks.find(
-                {"repo_id": repo_id, "branch": branch, "symbol_refs": {"$in": list(related_symbols)}},
+                {
+                    "repo_id": repo_id,
+                    "branch": branch,
+                    "symbol_refs": {"$in": list(related_symbols)},
+                },
                 {"_id": 0},
             ).limit(top_k)
         )
@@ -273,7 +329,9 @@ class HybridRetriever:
         if not q_terms:
             return docs
         for d in docs:
-            tokens = set(re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", d.get("content", "").lower()))
+            tokens = set(
+                re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", d.get("content", "").lower())
+            )
             overlap = len(q_terms.intersection(tokens))
             d["score"] = float(d.get("score", 0.0)) + 0.01 * math.log1p(overlap)
             if overlap:

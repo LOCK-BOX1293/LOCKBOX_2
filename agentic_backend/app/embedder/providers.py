@@ -6,6 +6,7 @@ import math
 import random
 import time
 from abc import ABC, abstractmethod
+from urllib import parse
 from urllib import request
 
 
@@ -47,7 +48,9 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
         api_key = os.getenv("OPENAI_API_KEY", "")
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY is required for EMBEDDING_PROVIDER=openai")
+            raise RuntimeError(
+                "OPENAI_API_KEY is required for EMBEDDING_PROVIDER=openai"
+            )
         self.api_key = api_key
         self.model = model
         self._dimension = dimension
@@ -71,7 +74,9 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             body = json.loads(resp.read().decode("utf-8"))
         vectors = [item["embedding"] for item in body.get("data", [])]
         if vectors and len(vectors[0]) != self._dimension:
-            raise RuntimeError(f"Embedding dimension mismatch: expected {self._dimension}, got {len(vectors[0])}")
+            raise RuntimeError(
+                f"Embedding dimension mismatch: expected {self._dimension}, got {len(vectors[0])}"
+            )
         return vectors
 
 
@@ -82,7 +87,9 @@ class VertexEmbeddingProvider(EmbeddingProvider):
         self.endpoint = os.getenv("VERTEX_EMBEDDING_ENDPOINT", "")
         self.api_key = os.getenv("VERTEX_API_KEY", "")
         if not self.endpoint or not self.api_key:
-            raise RuntimeError("VERTEX_EMBEDDING_ENDPOINT and VERTEX_API_KEY are required for EMBEDDING_PROVIDER=vertex")
+            raise RuntimeError(
+                "VERTEX_EMBEDDING_ENDPOINT and VERTEX_API_KEY are required for EMBEDDING_PROVIDER=vertex"
+            )
         self.model = model
         self._dimension = dimension
 
@@ -102,8 +109,56 @@ class VertexEmbeddingProvider(EmbeddingProvider):
             body = json.loads(resp.read().decode("utf-8"))
         vectors = body.get("vectors", [])
         if vectors and len(vectors[0]) != self._dimension:
-            raise RuntimeError(f"Embedding dimension mismatch: expected {self._dimension}, got {len(vectors[0])}")
+            raise RuntimeError(
+                f"Embedding dimension mismatch: expected {self._dimension}, got {len(vectors[0])}"
+            )
         return vectors
+
+
+class GeminiEmbeddingProvider(EmbeddingProvider):
+    def __init__(self, model: str, dimension: int) -> None:
+        import os
+
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            raise RuntimeError(
+                "GEMINI_API_KEY is required for EMBEDDING_PROVIDER=gemini"
+            )
+        self.api_key = api_key
+        self.model = model
+        self._dimension = dimension
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def _embed_one(self, text: str) -> list[float]:
+        model_path = (
+            self.model if self.model.startswith("models/") else f"models/{self.model}"
+        )
+        endpoint = (
+            f"https://generativelanguage.googleapis.com/v1beta/{model_path}:embedContent"
+            f"?key={parse.quote(self.api_key)}"
+        )
+        payload = {"content": {"parts": [{"text": text}]}}
+        req = request.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=40) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        vector = body.get("embedding", {}).get("values", [])
+        if vector and len(vector) != self._dimension:
+            raise RuntimeError(
+                f"Embedding dimension mismatch: expected {self._dimension}, got {len(vector)}"
+            )
+        return vector
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        # Keep simple and reliable in Python stdlib: call embedContent per text.
+        return [self._embed_one(t) for t in texts]
 
 
 class EmbeddingClient:
@@ -130,6 +185,8 @@ def build_provider(name: str, model: str, dimension: int) -> EmbeddingProvider:
     key = name.lower()
     if key == "local":
         return LocalHashEmbeddingProvider(model=model, dimension=dimension)
+    if key == "gemini":
+        return GeminiEmbeddingProvider(model=model, dimension=dimension)
     if key == "openai":
         return OpenAIEmbeddingProvider(model=model, dimension=dimension)
     if key == "vertex":
