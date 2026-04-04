@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     
     # Google specific
     google_api_key: Optional[str] = None
+
+    # ArmorIQ security layer
+    armoriq_api_key: Optional[str] = None
+    armoriq_base_url: str = "https://api.armoriq.ai"
+    armoriq_scan_path: str = "/v1/scan"
+    armoriq_timeout_seconds: float = 20.0
+    armoriq_fail_closed: bool = True
+    armoriq_app_name: str = "hackbite2"
     
     model_config = SettingsConfigDict(
         env_file=".env", 
