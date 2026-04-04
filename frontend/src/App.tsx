@@ -12,6 +12,28 @@ type QuerySession = {
   trace: any;
 };
 
+function markdownToPlainText(value: string): string {
+  const src = String(value || '').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  return src
+    .replace(/\r/g, '')
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, '').trim())
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!?\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[\t ]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function App() {
   const [mode, setMode] = useState<'full' | 'focused'>('full');
   const [query, setQuery] = useState('');
@@ -399,8 +421,8 @@ function App() {
           </div>
           <div className="query-response-body">{answerData.note_summary || answerData.answer}</div>
           <details className="query-response-details">
-            <summary>View full markdown answer</summary>
-            <div className="query-response-full">{answerData.answer}</div>
+            <summary>View full answer text</summary>
+            <div className="query-response-full">{markdownToPlainText(answerData.answer || '')}</div>
           </details>
           <details className="query-response-details">
             <summary>View query structure</summary>

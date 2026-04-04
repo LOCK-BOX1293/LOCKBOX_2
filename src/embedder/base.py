@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 from src.core.config import settings, logger
+from src.security import build_armoriq_client
 import time
 
 class BaseEmbedder(ABC):
@@ -38,6 +39,7 @@ class OpenAIEmbedder(BaseEmbedder):
             from openai import OpenAI
             self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = settings.embedding_model
+            self.armoriq = build_armoriq_client()
         except Exception as e:
             logger.error("Failed to initialize OpenAI client.", error=str(e))
             raise
@@ -45,6 +47,16 @@ class OpenAIEmbedder(BaseEmbedder):
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
+        if self.armoriq:
+            texts = [
+                self.armoriq.sanitize_text(
+                    text,
+                    provider="openai",
+                    model=self.model,
+                    operation="embedding",
+                )
+                for text in texts
+            ]
         
         # Handling retry and backoff in batch
         max_retries = 3
@@ -68,6 +80,7 @@ class GoogleEmbedder(BaseEmbedder):
             import google.generativeai as genai
             genai.configure(api_key=settings.google_api_key)
             self.model = settings.embedding_model
+            self.armoriq = build_armoriq_client()
         except Exception as e:
             logger.error("Failed to initialize Google Generative AI client.", error=str(e))
             raise
@@ -75,6 +88,16 @@ class GoogleEmbedder(BaseEmbedder):
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
+        if self.armoriq:
+            texts = [
+                self.armoriq.sanitize_text(
+                    text,
+                    provider="google",
+                    model=self.model,
+                    operation="embedding",
+                )
+                for text in texts
+            ]
         
         import google.generativeai as genai
         max_retries = 3

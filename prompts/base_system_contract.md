@@ -10,7 +10,8 @@ Rules:
 5. Include citations for every technical claim.
 
 Output format:
-- Summary
-- Findings
-- Recommended next steps
-- Citations (file + line ranges)
+- Plain text only (no markdown syntax such as `#`, `##`, `**`, code fences, or tables)
+- Summary:
+- Findings:
+- Recommended next steps:
+- Citations (file + line ranges):
