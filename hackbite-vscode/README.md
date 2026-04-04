@@ -17,21 +17,17 @@ This extension integrates VS Code with the local Hackbite FastAPI backend (`http
 - Optional auto-index on startup when no successful index exists
 - Debounced incremental indexing on file save (`hackbite.autoIndex=true`)
 
-## Local run
+## One-Line Run (Dev)
 
-1. Open this folder in VS Code: `LOCKBOX_2/hackbite-vscode`
-2. Run `npm install`
-3. Run `npm run compile`
-4. Press `F5` and choose `Run Hackbite Extension` to launch Extension Development Host
+From repo root (`LOCKBOX_2`), run exactly one command:
 
-If you usually open `LOCKBOX_2` (repo root), use debug config `Run Hackbite Extension (from LOCKBOX_2)`.
+- Windows (PowerShell): `powershell -ExecutionPolicy Bypass -File .\scripts\run-hackbite-extension.ps1`
+- Linux: `bash ./scripts/run-hackbite-extension.sh`
+- macOS: `bash ./scripts/run-hackbite-extension.sh`
 
-Reliable fallback launcher from repo root:
+This installs deps, compiles the extension, and opens a VS Code Extension Development Host.
 
-```powershell
-cd C:\Users\Tanmay\Desktop\Hackbyte\LOCKBOX_2
-powershell -ExecutionPolicy Bypass -File .\scripts\run-hackbite-extension.ps1
-```
+You do not need to run manual `npm install`, `npm run compile`, `vsce package`, or `code --install-extension` for normal development if you use the one-line dev command above.
 
 ## Where to run Hackbite commands
 
@@ -63,21 +59,22 @@ Note: backend is not required for commands to appear. Backend is required only f
 - `hackbite.role`
 - `hackbite.apiKey` (optional)
 
-## For Other Users
+## Package And Install VSIX (Only If Needed)
 
-Package and share VSIX:
+Use this only when you want to install the extension into your normal VS Code profile (outside Extension Development Host) or share a `.vsix` build.
 
-```powershell
-cd C:\Users\Tanmay\Desktop\Hackbyte\LOCKBOX_2\hackbite-vscode
-npm install
-npm run compile
-npx @vscode/vsce package --allow-missing-repository --allow-star-activation
-```
+From `LOCKBOX_2/hackbite-vscode`:
 
-Install VSIX in VS Code:
+- Windows (PowerShell): `npm install; npm run compile; npx @vscode/vsce package --allow-missing-repository --allow-star-activation; $v=(Get-ChildItem *.vsix | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; code --install-extension $v --force`
+- Linux: `npm install && npm run compile && npx @vscode/vsce package --allow-missing-repository --allow-star-activation && code --install-extension "$(ls -t ./*.vsix | head -n 1)" --force`
+- macOS: `npm install && npm run compile && npx @vscode/vsce package --allow-missing-repository --allow-star-activation && code --install-extension "$(ls -t ./*.vsix | head -n 1)" --force`
 
-```powershell
-code --install-extension .\hackbite-vscode-0.0.4.vsix --force
-```
+## One-Line Backend Run
 
-Runtime requirement for users: backend API should run separately (for example from `LOCKBOX_2/agentic_backend`) and be reachable via `hackbite.backendUrl`.
+From `LOCKBOX_2/agentic_backend`:
+
+- Windows (PowerShell): `py -m pip install -r requirements.txt; uv run uvicorn app.main:app --reload --port 8081`
+- Linux: `python3 -m pip install -r requirements.txt && uv run uvicorn app.main:app --reload --port 8081`
+- macOS: `python3 -m pip install -r requirements.txt && uv run uvicorn app.main:app --reload --port 8081`
+
+Frontend display inside `Hackbite: Open Code Map` is auto-started by the extension from `LOCKBOX_2/frontend`.
