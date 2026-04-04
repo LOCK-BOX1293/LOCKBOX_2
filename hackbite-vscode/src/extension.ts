@@ -14,19 +14,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const statusBar = new HackbiteStatusBar();
   context.subscriptions.push(statusBar);
   const askCommand = createAskQuestionCommand(context.extensionUri);
+  const output = vscode.window.createOutputChannel('Hackbite');
+  context.subscriptions.push(output);
+  output.appendLine('Hackbite: activate() started');
 
   context.subscriptions.push(
     vscode.commands.registerCommand("hackbite.indexWorkspace", createIndexWorkspaceCommand({ statusBar }))
   );
   context.subscriptions.push(vscode.commands.registerCommand("hackbite.ask", askCommand));
+  output.appendLine('Registered command: hackbite.indexWorkspace');
+  output.appendLine('Registered command: hackbite.ask');
   context.subscriptions.push(
     vscode.commands.registerCommand("hackbite.askPrefilled", async (question?: string) => {
       await askCommand(question);
     })
   );
+  output.appendLine('Registered command: hackbite.askPrefilled');
   context.subscriptions.push(
     vscode.commands.registerCommand("hackbite.openGraph", createOpenGraphCommand())
   );
+  output.appendLine('Registered command: hackbite.openGraph');
+  context.subscriptions.push(vscode.commands.registerCommand('hackbite.showLogs', () => output.show(true)));
+  output.appendLine('Registered command: hackbite.showLogs');
 
   const codeLensProvider = new HackbiteCodeLensProvider();
   const hoverProvider = new HackbiteHoverProvider();

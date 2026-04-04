@@ -40,6 +40,11 @@
         "command": "hackbite.revealSymbol",
         "title": "Hackbite: Reveal Symbol"
       }
+      ,
+      {
+        "command": "hackbite.showLogs",
+        "title": "Hackbite: Show Logs"
+      }
     ],
     "keybindings": [
       {
