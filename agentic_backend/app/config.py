@@ -29,6 +29,8 @@ def get_settings() -> Settings:
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip(),
         retrieval_service_url=os.getenv("RETRIEVAL_SERVICE_URL", "").strip() or None,
         mongodb_uri=os.getenv("MONGODB_URI", "").strip() or None,
-        mongodb_db=os.getenv("MONGODB_DB", "hackbite2").strip(),
+        mongodb_db=(
+            os.getenv("MONGODB_DB") or os.getenv("MONGODB_DB_HACKBITE2") or "hackbite2"
+        ).strip(),
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "8")),
     )

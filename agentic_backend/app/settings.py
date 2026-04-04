@@ -38,11 +38,7 @@ def get_settings() -> AppSettings:
         os.getenv("MONGODB_URI") or os.getenv("MONGODB_URI_HACKBITE2"),
         "mongodb://localhost:27017",
     )
-    mongo_db_env = (
-        os.getenv("MONGODB_DB")
-        or os.getenv("MONGODB_DB_HACKBITE2")
-        or os.getenv("MONGODB_DB_HACKBITE3")
-    )
+    mongo_db_env = os.getenv("MONGODB_DB") or os.getenv("MONGODB_DB_HACKBITE2")
     mongo_db = _clean_env(
         mongo_db_env,
         "hackbite2",
