@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from app.agents.specialists import (
     ExplanationAgent,
@@ -141,15 +142,31 @@ class Orchestrator:
                 }
             )
 
-        top = chunks[:5]
+        top = chunks[:8]
+        query_terms = self._query_terms(query)
+        evidence_sentences = self._rank_evidence_sentences(query_terms, top)
+
+        if evidence_sentences:
+            direct_summary = " ".join(evidence_sentences[:3])
+        else:
+            lead = top[0]
+            direct_summary = (
+                f"The strongest evidence is in {lead.file_path}:{lead.start_line}-{lead.end_line}. "
+                "This module is directly involved in the behavior requested by your question."
+            )
+
         findings = [
             f"{c.file_path}:{c.start_line}-{c.end_line} (score {c.score:.3f})"
-            for c in top
+            for c in top[:5]
         ]
+        max_score = max((float(c.score) for c in top), default=0.0)
+        confidence = max(0.35, min(0.92, 0.45 + (max_score * 1.8)))
+
         summary = (
-            f"Retrieved {len(chunks)} relevant chunks for: {query}. "
-            f"Top evidence comes from {top[0].file_path}."
+            f"{direct_summary}\n\n"
+            f"Evidence used: {len(chunks)} chunks, strongest from {top[0].file_path}."
         )
+
         return json.dumps(
             {
                 "summary": summary,
@@ -158,6 +175,59 @@ class Orchestrator:
                     "Open cited files and lines to verify behavior.",
                     "Refine question to a specific function for deeper answers.",
                 ],
-                "confidence": 0.62,
+                "confidence": round(confidence, 3),
             }
         )
+
+    def _query_terms(self, query: str) -> set[str]:
+        stop_words = {
+            "a",
+            "an",
+            "and",
+            "are",
+            "as",
+            "at",
+            "be",
+            "by",
+            "for",
+            "from",
+            "how",
+            "in",
+            "is",
+            "it",
+            "of",
+            "on",
+            "or",
+            "that",
+            "the",
+            "this",
+            "to",
+            "use",
+            "what",
+            "with",
+        }
+        terms = {t.lower() for t in re.findall(r"[a-zA-Z_][a-zA-Z0-9_]+", query)}
+        return {t for t in terms if t not in stop_words and len(t) > 2}
+
+    def _rank_evidence_sentences(self, query_terms: set[str], chunks) -> list[str]:
+        candidates: list[tuple[float, str]] = []
+        seen: set[str] = set()
+
+        for chunk in chunks:
+            text = chunk.text or ""
+            # Split into sentence-like segments; keep only informative snippets.
+            segments = re.split(r"(?<=[.!?])\s+|\n+", text)
+            for seg in segments:
+                sentence = " ".join(seg.split()).strip()
+                if len(sentence) < 45:
+                    continue
+                if sentence in seen:
+                    continue
+                lower = sentence.lower()
+                overlap = sum(1 for term in query_terms if term in lower)
+                score = float(chunk.score) + (0.08 * overlap)
+                candidates.append((score, sentence))
+                seen.add(sentence)
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return [sent for _, sent in candidates[:6]]

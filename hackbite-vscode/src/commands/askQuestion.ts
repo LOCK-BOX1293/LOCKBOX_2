@@ -39,13 +39,22 @@ export function createAskQuestionCommand(extensionUri: vscode.Uri): (prefilledQu
             });
 
             if (ask.answer?.trim().length) {
+              const citationBackedChunks = (ask.citations ?? []).map((c) => ({
+                file_path: c.file_path,
+                start_line: c.start_line,
+                end_line: c.end_line,
+                score: undefined,
+                reason: c.why_relevant,
+                content: "",
+              }));
+
               return {
                 answer: ask.answer,
                 confidence: ask.confidence,
                 intent: ask.intent,
                 source: "ask-agent",
                 citations: ask.citations ?? [],
-                chunks: [],
+                chunks: citationBackedChunks,
               } as QAResponse;
             }
           } catch {

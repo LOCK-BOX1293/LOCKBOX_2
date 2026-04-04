@@ -122,7 +122,7 @@ export class QAPanel {
         if (!q) {
           return;
         }
-        statusEl.textContent = 'Retrieving relevant chunks...';
+        statusEl.textContent = 'Generating answer from indexed evidence...';
         answerEl.innerHTML = '';
         resultsEl.innerHTML = '';
         vscode.postMessage({ type: 'ask', question: q });
@@ -148,14 +148,27 @@ export class QAPanel {
           const payload = msg.payload;
           const chunks = payload.chunks || [];
           const citations = payload.citations || [];
+          const evidenceCount = (payload.source === 'ask-agent' ? citations.length : chunks.length);
+          const answerText = String(payload.answer || '');
+          const findingsSplit = answerText.split('\nFindings:');
+          const directAnswer = findingsSplit[0] || answerText;
+          const evidenceSummary = findingsSplit.length > 1 ? ('Findings:' + findingsSplit.slice(1).join('\nFindings:')) : '';
+
           statusEl.textContent = 'Confidence: ' + Number(payload.confidence || 0).toFixed(3)
-            + ' | Chunks: ' + chunks.length
+            + ' | Evidence: ' + evidenceCount
             + ' | Source: ' + (payload.source || 'unknown');
 
           answerEl.innerHTML = '<div class="chunk">'
-            + '<div class="meta">Answer</div>'
-            + '<pre>' + escapeHtml(payload.answer || '') + '</pre>'
+            + '<div class="meta">Direct Answer</div>'
+            + '<pre>' + escapeHtml(directAnswer.trim()) + '</pre>'
             + '</div>';
+
+          if (evidenceSummary.trim()) {
+            answerEl.innerHTML += '<div class="chunk">'
+              + '<div class="meta">Evidence Summary</div>'
+              + '<pre>' + escapeHtml(evidenceSummary.trim()) + '</pre>'
+              + '</div>';
+          }
 
           if (citations.length) {
             const citationHtml = citations.map((c, i) => {
@@ -169,11 +182,12 @@ export class QAPanel {
 
           resultsEl.innerHTML = chunks.map((c) => {
             const scorePart = c.score ? (' | score=' + Number(c.score).toFixed(3)) : '';
+            const content = c.content ? c.content : '[Referenced by citation]';
             return '<div class="chunk">'
               + '<div class="meta">'
               + escapeHtml(c.file_path) + ':' + escapeHtml(c.start_line) + '-' + escapeHtml(c.end_line) + scorePart
               + '</div>'
-              + '<pre>' + escapeHtml(c.content) + '</pre>'
+              + '<pre>' + escapeHtml(content) + '</pre>'
               + '</div>';
           }).join('');
         }
