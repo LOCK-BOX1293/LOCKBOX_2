@@ -35,6 +35,8 @@ class LocalHybridRetrievalProvider(RetrievalProvider):
             branch="main",
             q=query,
             top_k=top_k,
+            path_prefix="src/",
+            include_tests=False,
             include_graph=True,
         )
         chunks = [

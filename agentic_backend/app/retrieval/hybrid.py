@@ -41,6 +41,10 @@ class HybridRetriever:
         )
         fused = self._fuse(vector_hits, text_hits, top_k)
 
+        # Apply deterministic query priors even when reranking is disabled.
+        # This improves large-repo precision for architecture/code-flow queries.
+        fused = self._apply_query_priors(q, fused)
+
         if include_graph:
             fused = self._expand_graph(repo_id, branch, fused, top_k)
 
@@ -68,6 +72,120 @@ class HybridRetriever:
             ],
             "confidence": confidence,
         }
+
+    def _apply_query_priors(self, q: str, docs: list[dict]) -> list[dict]:
+        q_lower = q.lower()
+        q_terms = set(re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", q_lower))
+
+        technical_arch_query = any(
+            t in q_terms
+            for t in {
+                "how",
+                "where",
+                "call",
+                "calls",
+                "called",
+                "flow",
+                "orchestrator",
+                "agent",
+                "search",
+                "retrieve",
+                "pipeline",
+                "service",
+                "function",
+                "method",
+                "class",
+            }
+        )
+        mentions_tests = any(t in q_terms for t in {"test", "tests", "pytest"})
+        mentions_docs = any(
+            t in q_terms
+            for t in {
+                "readme",
+                "docs",
+                "documentation",
+                "deploy",
+                "docker",
+                "yaml",
+                "yml",
+                "workflow",
+                "ci",
+                "cd",
+            }
+        )
+
+        # Give strong boosts for literal query token overlap in path/content,
+        # helps large repos surface exact call-chain chunks.
+        boost_terms = [
+            t
+            for t in q_terms
+            if len(t) >= 4
+            and t
+            not in {
+                "how",
+                "where",
+                "calls",
+                "called",
+                "query",
+                "search",
+                "service",
+                "method",
+                "class",
+                "function",
+                "file",
+                "code",
+            }
+        ]
+
+        for d in docs:
+            path = (d.get("file_path") or "").lower()
+            content = (d.get("content") or "").lower()
+            bonus = 0.0
+
+            # Prefer core code paths for technical architecture questions.
+            if technical_arch_query:
+                if path.startswith("src/") or "/src/" in path:
+                    bonus += 0.04
+                if any(
+                    path.startswith(p)
+                    for p in ["docs/", "deployment/", ".github/", "config/"]
+                ):
+                    if not mentions_docs:
+                        bonus -= 0.08
+                if (
+                    path.endswith((".md", ".rst", ".yaml", ".yml", ".json"))
+                    and not mentions_docs
+                ):
+                    bonus -= 0.04
+
+            if self._is_test_path(path) and not mentions_tests:
+                bonus -= 0.07
+
+            # token overlap boosts
+            overlap_hits = 0
+            for t in boost_terms:
+                if t in path:
+                    overlap_hits += 1
+                    bonus += 0.03
+                if t in content:
+                    overlap_hits += 1
+                    bonus += 0.015
+
+            # Prefer operational chunks over metadata/manifest for technical flow queries.
+            if technical_arch_query:
+                if "agent_manifest" in content or "manifest" in path:
+                    bonus -= 0.02
+                if "answer_query" in content:
+                    bonus += 0.05
+                if "janapada_client.call" in content or 'method="search"' in content:
+                    bonus += 0.07
+
+            d["score"] = float(d.get("score", 0.0)) + bonus
+            if bonus != 0:
+                d["reason"] = f"{d.get('reason', 'match')}+prior"
+
+        docs.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        return docs
 
     def _vector_search(
         self,
