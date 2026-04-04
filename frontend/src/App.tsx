@@ -10,7 +10,7 @@ function App() {
   const [role, setRole] = useState<'backend' | 'frontend' | 'security' | 'architect' | 'debugger'>('backend');
   const [graphData, setGraphData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
   const [answerData, setAnswerData] = useState<any>(null);
-  const [, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   // Right panel states
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -268,6 +268,7 @@ function App() {
             data={graphData} 
             onNodeClick={handleNodeClick}
             onEdgeClick={handleEdgeClick}
+            loading={loading}
           />
         </div>
         {selectedNodeId && (

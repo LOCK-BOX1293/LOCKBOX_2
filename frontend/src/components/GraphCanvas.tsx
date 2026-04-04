@@ -20,6 +20,7 @@ interface GraphCanvasProps {
   data: any;
   onNodeClick: (node: Node) => void;
   onEdgeClick: (edge: Edge) => void;
+  loading?: boolean;
 }
 
 const customNodeStyles = {
@@ -55,7 +56,7 @@ const customNodeStyles = {
   }
 };
 
-export function GraphCanvas({ data, onNodeClick, onEdgeClick }: GraphCanvasProps) {
+export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }: GraphCanvasProps) {
   const layouted = useMemo(() => {
     const rawNodes = (data?.nodes || []) as any[];
     const rawEdges = (data?.edges || []) as any[];
@@ -144,7 +145,45 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick }: GraphCanvasProps
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {loading && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 20,
+            color: '#fff',
+            fontWeight: 700,
+            letterSpacing: 0.3,
+          }}
+        >
+          Loading graph...
+        </div>
+      )}
+
+      {!loading && (!nodes || nodes.length === 0) && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            color: 'var(--text-muted)',
+            textAlign: 'center',
+            padding: 24,
+          }}
+        >
+          No nodes to show for this repository/query.
+          <br />Try changing query, role, or include tests/docs.
+        </div>
+      )}
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -153,6 +192,14 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick }: GraphCanvasProps
         onNodeClick={(_, node) => onNodeClick(node)}
         onEdgeClick={(_, edge) => onEdgeClick(edge)}
         fitView
+        minZoom={0.2}
+        maxZoom={1.4}
+        fitViewOptions={{
+          padding: 0.25,
+          minZoom: 0.25,
+          maxZoom: 1.0,
+          includeHiddenNodes: false,
+        }}
       >
         <Controls style={{ bottom: 20, left: 20 }} />
         <MiniMap 
