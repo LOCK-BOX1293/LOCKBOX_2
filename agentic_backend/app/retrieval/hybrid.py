@@ -149,6 +149,18 @@ class HybridRetriever:
         return docs
 
     def _text_search(self, repo_id: str, branch: str, q: str, top_k: int, lang: str | None, path_prefix: str | None) -> list[dict]:
+        def _fallback_text() -> list[dict]:
+            rex = re.compile(re.escape(q), re.IGNORECASE)
+            fallback_docs: list[dict] = []
+            for c in self.store.chunks.find({"repo_id": repo_id, "branch": branch}, {"_id": 0}):
+                m = rex.search(c.get("content", "")) or rex.search(c.get("file_path", ""))
+                if not m:
+                    continue
+                score = 1.0 / (1.0 + max(0, m.start()))
+                fallback_docs.append({**c, "score": score})
+            fallback_docs.sort(key=lambda x: x["score"], reverse=True)
+            return fallback_docs[:top_k]
+
         pipeline = [
             {
                 "$search": {
@@ -178,17 +190,10 @@ class HybridRetriever:
         ]
         try:
             docs = list(self.store.chunks.aggregate(pipeline))
+            if not docs:
+                docs = _fallback_text()
         except Exception:
-            rex = re.compile(re.escape(q), re.IGNORECASE)
-            docs = []
-            for c in self.store.chunks.find({"repo_id": repo_id, "branch": branch}, {"_id": 0}):
-                m = rex.search(c.get("content", "")) or rex.search(c.get("file_path", ""))
-                if not m:
-                    continue
-                score = 1.0 / (1.0 + max(0, m.start()))
-                docs.append({**c, "score": score})
-            docs.sort(key=lambda x: x["score"], reverse=True)
-            docs = docs[:top_k]
+            docs = _fallback_text()
 
         docs = self._apply_filters(docs, lang, path_prefix)
         for d in docs:
