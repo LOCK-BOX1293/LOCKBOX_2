@@ -1,230 +1,83 @@
-# RoleReady 🎯
+# Hackbite 2 Vectorization and Retrieval System
 
-Don't watch training. Live it.
+A production-ready end-to-end Python system that scans a source repository, extracts code symbols, generates semantic chunks with embeddings, and stores them in MongoDB Atlas for hybrid semantic search.
 
-Hackbite 2 is a **web-first, index-first, multi-agent system** for understanding large codebases.
+## Architecture
 
-It starts by indexing your repository into structured knowledge (symbols, chunks, embeddings, relationships), then gives a **clickable visual interface** where each node/file/function opens related code and explanations.
+![Architecture](https://via.placeholder.com/800x400.png?text=RepoScanner+->+ASTParser+->+SemanticChunker+->+BatchEmbedder+->+MongoDB)
 
-> TUI is supported for basic usage, but the **primary product experience is the web app**.
+The pipeline incorporates:
+1. **Scanner**: Scans standard directories respecting `.gitignore`.
+2. **Parser**: Uses tree-sitter to break down files into functions/classes.
+3. **Chunker**: Splits large files while keeping symbols logically intact.
+4. **Embedder**: Pluggable embedder (Sentence Transformers or OpenAI).
+5. **Storage**: Interacts with MongoDB. Upsert capabilities ensure idempotency.
+6. **Search**: Hybrid search using Reciprocal Rank Fusion on Vector Search and Lexical Search results.
 
----
+## Quickstart
 
-## Core Product Principles
+### Setup Requirements
+1. Python 3.11+
+2. MongoDB Atlas Cluster (version 7.0+ for Vector/Search index integration)
+3. SentenceTransformers (default) or OpenAI credentials.
 
-1. **Web First**: main UX is visual and clickable.
-2. **Index First**: first request triggers full indexing and knowledge graph creation.
-3. **Simple but Powerful**: fast answers + traceable, interactive evidence.
-4. **Agentic by Design**: multiple specialized agents cooperate on each request.
+### Installation
+```bash
+python -m venv venv
+# Windows:
+.\venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
 
----
-
-## What It Does
-
-- Connect a repo (GitHub/local)
-- Auto-ingest and index codebase
-- Build symbol graph + hybrid retrieval indexes
-- Answer developer questions with citations
-- Show clickable code map and dependency graph
-- Let users drill into exact files, functions, call paths, and related snippets
-
----
-
-## Multi-Agent Architecture
-
-Hackbite 2 uses specialized agents coordinated by an orchestrator.
-
-### 1) Orchestrator Agent (Svami)
-**Role**: traffic controller and planner
-
-- Detects intent (`find`, `explain`, `debug`, `where-is`, `refactor`)
-- Decides which specialist agents to invoke
-- Combines outputs into final response
-- Handles retries, fallbacks, and confidence scoring
-
-### 2) Ingestion Agent
-**Role**: repository processing pipeline
-
-- Scans files and applies filters
-- Parses AST/tree-sitter for symbols
-- Chunks content on semantic boundaries
-- Emits metadata: file path, symbol name/type, lines, language
-
-### 3) Indexing Agent
-**Role**: searchable knowledge creation
-
-- Generates embeddings (code + docs)
-- Writes to vector index
-- Writes to lexical/BM25 index
-- Updates graph relations (imports, calls, references)
-
-### 4) Retrieval Agent (RAG Core)
-**Role**: high-quality context fetch
-
-- Runs **hybrid retrieval** (vector + lexical + graph expansion)
-- Fuses candidates (RRF/weighted fusion)
-- Reranks top results
-- Returns compact, high-signal context blocks
-
-### 5) Explanation Agent
-**Role**: answer generation and teaching
-
-- Produces concise technical explanations
-- Includes source citations and line-level references
-- Adapts style by role (backend/frontend/security/devops)
-
-### 6) Visual Mapping Agent
-**Role**: UI-ready structure
-
-- Converts retrieval/graph output into clickable nodes/edges
-- Highlights “why this was retrieved”
-- Provides related symbols, usages, and test links
-
-### 7) Session Memory Agent
-**Role**: continuity and personalization
-
-- Stores conversation context and user focus areas
-- Tracks recent files/symbols/questions
-- Improves follow-up query understanding
-
----
-
-## Request Lifecycle
-
-1. User asks question in web UI
-2. Orchestrator classifies intent
-3. Retrieval Agent fetches relevant context (hybrid)
-4. Explanation Agent generates answer + citations
-5. Visual Mapping Agent prepares clickable graph
-6. UI renders answer + highlighted code + interactive nodes
-
-If no index exists, system runs:
-`Ingestion Agent -> Indexing Agent -> Graph build -> Query execution`
-
----
-
-## RAG Strategy (Better-Than-Basic)
-
-- **Hybrid retrieval**: vector + BM25 + graph neighbors
-- **Symbol-first chunking**: function/class/module aware
-- **Metadata filters**: language, path, service, ownership
-- **Reranking**: improve precision on final context window
-- **Grounded generation**: answer only from retrieved evidence
-
----
-
-## Web UX (Primary)
-
-### Main Screens
-
-1. **Repository Dashboard**
-   - indexing status, repo stats, health
-
-2. **Interactive Code Map**
-   - nodes: modules/classes/functions
-   - edges: import/call/reference dependencies
-
-3. **Code Viewer**
-   - syntax-highlighted file/symbol panel
-   - line-level highlights from retrieval
-
-4. **Q&A Workspace**
-   - answers with cited snippets
-   - “why shown” relevance panel
-
-### Click-to-Explore Behavior
-
-Click any node (file/function/class) to open:
-- definition
-- usages/references
-- related snippets
-- nearby dependency graph
-- recent discussions related to that symbol
-
----
-
-## TUI (Secondary)
-
-TUI is for quick terminal workflows:
-- start indexing
-- ask question
-- view top sources
-- inspect service/agent health
-
----
-
-## Suggested Tech Stack
-
-- **Backend**: FastAPI (Python)
-- **Frontend**: Next.js + React + Monaco + Cytoscape/D3
-- **Queue/Workers**: Redis + Celery/Arq
-- **Vector DB**: Qdrant/Weaviate/Pinecone
-- **Lexical Search**: OpenSearch/Elasticsearch
-- **Graph Store**: Neo4j (or lightweight graph layer)
-- **LLM Layer**: pluggable (Gemini/Claude/OpenAI)
-- **Observability**: OpenTelemetry + Prometheus + Grafana
-
----
-
-## Monorepo Skeleton (Recommended)
-
-```text
-hackbite_2/
-├── apps/
-│   ├── web/                  # Next.js web app (main product)
-│   ├── tui/                  # Terminal UI (secondary)
-│   └── api/                  # FastAPI gateway
-├── agents/
-│   ├── orchestrator/
-│   ├── ingestion/
-│   ├── indexing/
-│   ├── retrieval/
-│   ├── explanation/
-│   ├── visual-mapper/
-│   └── memory/
-├── libs/
-│   ├── parsers/
-│   ├── embeddings/
-│   ├── ranking/
-│   ├── graph/
-│   └── shared-models/
-├── infra/
-│   ├── docker/
-│   └── k8s/
-├── scripts/
-│   ├── ingest_repo.py
-│   └── reindex_changed_files.py
-└── README.md
+pip install -r requirements.txt
 ```
 
----
+### Configuration
+Create a `.env` in the root:
+```env
+MONGODB_URI=mongodb+srv://<USER>:<PASS>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB=hackbite2
+EMBEDDING_PROVIDER=local
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+EMBEDDING_DIM=384
+```
 
-## V1 Scope (Keep It Tight)
+## CLI Usage
 
-1. Repo connect + automatic indexing
-2. Hybrid search API
-3. Q&A API with citations
-4. Web code viewer + basic graph
-5. Click node -> show related code
+### 1. Ensure Database Indexes
+This command sets up the necessary MongoDB uniqueness constraints and Atlas Search indexes. 
+*(Note: Attempting to create Atlas Search indexes via pymongo CLI requires MongoDB 7.0+)*
+```bash
+python -m src.cli.main index ensure-indexes
+```
 
----
+### 2. Full Indexing
+Perform a clean indexing of the target repository.
+```bash
+python -m src.cli.main index full \
+    --repo-path ./ \
+    --repo-id myconfig-repo \
+    --branch main
+```
 
-## Long-Term Roadmap
+### 3. Incremental Indexing
+Updates the index efficiently by relying on file content hashing.
+```bash
+python -m src.cli.main index incremental \
+    --repo-path ./ \
+    --repo-id myconfig-repo \
+    --branch main
+```
 
-- Incremental indexing from git diff
-- PR-aware reasoning and review suggestions
-- Team knowledge memory and ownership maps
-- Agent-to-agent planning with cost-aware routing
-- Multi-repo dependency intelligence
+### 4. Search and Retrieve
+Uses hybrid search combining Atlas Vector Search and regular Atlas Search.
+```bash
+python -m src.cli.main retrieve query \
+    --repo-id myconfig-repo \
+    --q "How does the indexing pipeline work?" \
+    --top-k 3
+```
 
----
-
-## Project Status
-
-🚧 Early architecture stage — designed for a strong V1 that is usable fast, then hardens into production.
-
----
-
-## License
-
-Add your preferred license (`MIT`, `Apache-2.0`, etc.)
+## Future Expansions (Migration Notes)
+- **Graph Expansion**: The data models already include `edges` and `symbols`. In the future, building an AST traversal module that detects references and function call traces will permit a graph agent to traverse from one symbol identifier to another.
+- **Expert-Answer Agents**: The retrieval layer currently outputs standard ContextPacks. Wrapping a language model (e.g., GPT-4 or Gemini 1.5 Pro) tightly around the `RetrieveResponse` to provide a summarized markdown output will readily complete the Generation part of RAG.
