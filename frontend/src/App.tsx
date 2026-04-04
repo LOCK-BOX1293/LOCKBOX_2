@@ -26,6 +26,8 @@ function App() {
   const [repoError, setRepoError] = useState<string | null>(null);
   const [includeTests, setIncludeTests] = useState(false);
 
+  const activeRepo = selectedRepo || repoId;
+
   const loadRepos = async () => {
     try {
       setRepoError(null);
@@ -58,7 +60,6 @@ function App() {
   const loadGraph = async (forcedQuery?: string) => {
     try {
       setLoading(true);
-      const activeRepo = selectedRepo || repoId;
       const q = (forcedQuery || query || '').trim();
       const requestedMode = mode === 'focused' && !q ? 'full' : mode;
       const data = await fetchGraphOverview(activeRepo, branch, requestedMode, q, includeTests);
@@ -77,7 +78,6 @@ function App() {
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const activeRepo = selectedRepo || repoId;
       const ask = await askQuestion(activeRepo, query, sessionId, role);
       const structure = {
         query,
@@ -111,7 +111,6 @@ function App() {
     setSelectedNodeId(node.id);
     const type = node.data?.type || 'file';
     try {
-      const activeRepo = selectedRepo || repoId;
       const data = await fetchNodeDetails(node.id, activeRepo, type, branch);
       setPanelData({
         ...data,
@@ -131,7 +130,6 @@ function App() {
 
   const handleEdgeClick = async (edge: any) => {
     try {
-      const activeRepo = selectedRepo || repoId;
       const data = await fetchEdgeContext(edge.source, edge.target, activeRepo, branch);
       setSelectedNodeId(`${edge.source} -> ${edge.target}`);
       setPanelData({
@@ -189,6 +187,14 @@ function App() {
           Refresh Repos
         </button>
 
+        <button
+          className="nav-button"
+          onClick={() => loadGraph()}
+          title="Reload graph for selected repository"
+        >
+          Refresh Graph
+        </button>
+
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 12 }}>
           <input
             type="checkbox"
@@ -237,7 +243,7 @@ function App() {
 
       {!repoError && (
         <div style={{ padding: '6px 16px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', fontSize: 12 }}>
-          nodes: {graphData.nodes.length} | edges: {graphData.edges.length} | mode: {mode}
+          repo: {activeRepo} | nodes: {graphData.nodes.length} | edges: {graphData.edges.length} | mode: {mode}
         </div>
       )}
 
