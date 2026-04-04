@@ -1,0 +1,4 @@
+UNLICENSED
+
+This extension package is currently for internal development and testing only.
+No license is granted for redistribution at this stage.

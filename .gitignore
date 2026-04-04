@@ -35,3 +35,4 @@ plan.md
 node_modules/
 out/
 dist/
+*.vsix
