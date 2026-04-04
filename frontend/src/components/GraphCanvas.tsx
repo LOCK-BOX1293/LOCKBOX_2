@@ -57,10 +57,10 @@ const customNodeStyles = {
     textAlign: 'center',
   },
   file: {
-    padding: '10px',
-    borderRadius: '50%',
-    width: 60,
-    height: 60,
+    padding: '10px 14px',
+    borderRadius: '8px',
+    minWidth: 150,
+    maxWidth: 220,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -69,13 +69,15 @@ const customNodeStyles = {
     color: '#fff',
     border: '2px solid rgba(255,255,255,0.2)',
     boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-    fontSize: '0.65rem'
+    fontSize: '0.65rem',
+    wordBreak: 'break-word',
+    textAlign: 'center'
   },
   symbol: {
-    padding: '8px',
-    borderRadius: '50%',
-    width: 50,
-    height: 50,
+    padding: '8px 12px',
+    borderRadius: '8px',
+    minWidth: 120,
+    maxWidth: 170,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -84,7 +86,9 @@ const customNodeStyles = {
     color: '#fff',
     border: '2px solid rgba(255,255,255,0.2)',
     boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-    fontSize: '0.6rem'
+    fontSize: '0.6rem',
+    wordBreak: 'break-word',
+    textAlign: 'center'
   }
 };
 
@@ -121,7 +125,7 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
 
     const positionedNodes = rawNodes.map((n: any) => {
       const nodeType = n.node_type || n.type || 'file';
-      const fullLabel = n.label || n.name || n.id;
+      const fullLabel = n.display_label || n.label || n.name || n.id;
       const shortLabel = String(fullLabel).split('/').slice(-1)[0];
       const dims = g.node(n.id) || { x: 0, y: 0, width: 180, height: 60 };
       return {

@@ -598,10 +598,14 @@ def _build_focused_graph(
             return True
         return False
 
+    def _is_generic_symbol_name(name: str) -> bool:
+        return name.strip().lower() in {"main", "__init__", "index", "config", "setup"}
+
     nodes: list[dict] = []
     edges: list[dict] = []
     node_ids: set[str] = set()
     symbol_ids: set[str] = set()
+    selected_symbol_ids: set[str] = set()
 
     # Synthetic query node (AI-selected anchor) for focused graph readability.
     qid = f"query::{hashlib.sha1(q.encode('utf-8')).hexdigest()[:12]}"
@@ -654,6 +658,8 @@ def _build_focused_graph(
                     },
                 ).limit(20)
             )
+
+            retrieved_refs = set(c.get("symbol_refs") or [])
             for s in syms:
                 if _is_low_signal_symbol(s):
                     continue
@@ -664,13 +670,38 @@ def _build_focused_graph(
                 sid = s.get("symbol_id")
                 if not sid:
                     continue
+
+                name = str(s.get("name") or "")
+                # Keep generic symbols only when explicitly retrieved in chunk refs.
+                if _is_generic_symbol_name(name) and sid not in retrieved_refs:
+                    continue
+
+                # Avoid module-vs-function same-name duplication within same file.
+                if str(s.get("symbol_type") or "").lower() == "module":
+                    has_non_module_same_name = bool(
+                        store.symbols.find_one(
+                            {
+                                "repo_id": repo_id,
+                                "branch": branch,
+                                "file_path": s.get("file_path"),
+                                "name": name,
+                                "symbol_type": {"$ne": "module"},
+                            },
+                            {"_id": 1},
+                        )
+                    )
+                    if has_non_module_same_name:
+                        continue
+
                 symbol_ids.add(sid)
+                selected_symbol_ids.add(sid)
                 if sid not in node_ids:
                     node_ids.add(sid)
                     nodes.append(
                         {
                             "id": sid,
-                            "label": s.get("name"),
+                            "label": f"{s.get('name')} ({str(s.get('file_path') or '').split('/')[-1]})",
+                            "display_label": f"{s.get('name')} ({str(s.get('file_path') or '').split('/')[-1]})",
                             "type": "symbol",
                             "symbol_type": s.get("symbol_type"),
                             "file_path": s.get("file_path"),
@@ -682,15 +713,19 @@ def _build_focused_graph(
 
                 # Synthetic function-focus node for highly relevant chunks
                 if str(s.get("symbol_type") or "").lower() in {"function", "class"}:
+                    if _is_generic_symbol_name(name) and sid not in retrieved_refs:
+                        continue
                     focus_id = f"focus::{sid}"
                     if focus_id not in node_ids:
                         node_ids.add(focus_id)
                         nodes.append(
                             {
                                 "id": focus_id,
-                                "label": f"{s.get('name')}()"
+                                "label": f"{s.get('name')} ({str(s.get('file_path') or '').split('/')[-1]})",
+                                "focus_name": f"{s.get('name')}()"
                                 if str(s.get("symbol_type") or "").lower() == "function"
                                 else str(s.get("name") or "symbol"),
+                                "display_label": f"{s.get('name')} ({str(s.get('file_path') or '').split('/')[-1]})",
                                 "type": "focus",
                                 "relevance_score": float(c.get("score", 0.0)) + 0.01,
                                 "reason": "ai-focus-node",
@@ -721,6 +756,21 @@ def _build_focused_graph(
             s = e.get("from_symbol_id")
             t = e.get("to_symbol_id")
             if s in node_ids and t in node_ids:
+                # Drop weak generic-to-generic edges unless explicitly selected by retrieval.
+                if s in selected_symbol_ids and t in selected_symbol_ids:
+                    s_doc = store.symbols.find_one(
+                        {"repo_id": repo_id, "branch": branch, "symbol_id": s},
+                        {"_id": 0, "name": 1},
+                    )
+                    t_doc = store.symbols.find_one(
+                        {"repo_id": repo_id, "branch": branch, "symbol_id": t},
+                        {"_id": 0, "name": 1},
+                    )
+                    if s_doc and t_doc:
+                        if _is_generic_symbol_name(
+                            str(s_doc.get("name") or "")
+                        ) and _is_generic_symbol_name(str(t_doc.get("name") or "")):
+                            continue
                 edges.append(
                     {
                         "source": s,

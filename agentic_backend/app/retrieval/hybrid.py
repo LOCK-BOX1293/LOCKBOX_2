@@ -65,6 +65,7 @@ class HybridRetriever:
                     "start_line": r["start_line"],
                     "end_line": r["end_line"],
                     "content": r["content"],
+                    "symbol_refs": r.get("symbol_refs", []),
                     "score": round(float(r["score"]), 6),
                     "reason": r["reason"],
                 }
