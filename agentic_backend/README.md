@@ -64,6 +64,7 @@ Atlas indexes created/validated:
 - POST /index/incremental
 - POST /index/ensure-indexes
 - POST /retrieve/query
+- POST /mindflow/turn
 - GET /jobs/{repo_id}
 - GET /graph/node/{node_id}
 - GET /graph/edge-context
@@ -72,6 +73,10 @@ Node/edge support for web UI:
 
 - graph node endpoint returns code payload for file or symbol node
 - edge-context returns connection metadata and code snippets for both sides of the edge
+
+Mindflow endpoint:
+
+- `/mindflow/turn` executes one orchestrator loop (chat + node/edge updates + optional search enrichment + drift-based workspace switching)
 
 ## CLI
 

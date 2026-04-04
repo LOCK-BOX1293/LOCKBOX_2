@@ -21,6 +21,7 @@ class Settings:
     mongodb_uri: str | None
     mongodb_db: str
     retrieval_top_k: int
+    mindflow_drift_threshold: float
 
 
 def get_settings() -> Settings:
@@ -33,4 +34,5 @@ def get_settings() -> Settings:
             os.getenv("MONGODB_DB") or os.getenv("MONGODB_DB_HACKBITE2") or "hackbite2"
         ).strip(),
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "8")),
+        mindflow_drift_threshold=float(os.getenv("MINDFLOW_DRIFT_THRESHOLD", "0.62")),
     )
