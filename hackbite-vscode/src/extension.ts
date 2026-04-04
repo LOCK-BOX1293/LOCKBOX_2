@@ -17,6 +17,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const output = vscode.window.createOutputChannel('Hackbite');
   context.subscriptions.push(output);
   output.appendLine('Hackbite: activate() started');
+  if (context.extensionMode === vscode.ExtensionMode.Development) {
+    void vscode.window.showInformationMessage("Hackbite extension activated in Development Host");
+  }
 
   context.subscriptions.push(
     vscode.commands.registerCommand("hackbite.indexWorkspace", createIndexWorkspaceCommand({ statusBar }))

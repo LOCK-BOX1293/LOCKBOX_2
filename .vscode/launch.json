@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Hackbite Extension (from LOCKBOX_2)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/hackbite-vscode"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/hackbite-vscode/out/**/*.js"
+      ],
+      "preLaunchTask": "hackbite: compile"
+    }
+  ]
+}
