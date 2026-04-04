@@ -161,35 +161,88 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         mapEl.querySelectorAll('.node').forEach((n) => n.remove());
         edgeSvg.innerHTML = '';
 
-        const nodes = (graph.nodes || []).slice(0, 220);
+        const nodes = (graph.nodes || []).slice(0, 260);
+        const edges = (graph.edges || []).slice(0, 700);
         const files = nodes.filter((n) => nodeType(n) === 'file');
-        const others = nodes.filter((n) => nodeType(n) !== 'file');
-        const ringCenterX = 620;
-        const ringCenterY = 460;
-        const fileRadius = 330;
-        const symbolRadius = 210;
+        const symbols = nodes.filter((n) => nodeType(n) === 'symbol');
+        const queryNodes = nodes.filter((n) => nodeType(n) === 'query');
+        const focusNodes = nodes.filter((n) => nodeType(n) === 'focus');
+
+        const FILE_X_START = 120;
+        const FILE_X_GAP = 190;
+        const QUERY_Y = 90;
+        const FILE_Y = 220;
+        const FOCUS_Y = 340;
+        const SYMBOL_Y = 470;
 
         positions = new Map();
 
+        queryNodes.forEach((n, i) => {
+          const x = FILE_X_START + (i * FILE_X_GAP * 1.2);
+          const y = QUERY_Y;
+          positions.set(n.id, { x, y });
+        });
+
         files.forEach((n, i) => {
-          const angle = (Math.PI * 2 * i) / Math.max(files.length, 1);
-          const x = ringCenterX + Math.cos(angle) * fileRadius;
-          const y = ringCenterY + Math.sin(angle) * fileRadius;
+          const x = FILE_X_START + (i * FILE_X_GAP);
+          const y = FILE_Y;
           positions.set(n.id, { x, y });
         });
 
-        others.forEach((n, i) => {
-          const angle = (Math.PI * 2 * i) / Math.max(others.length, 1);
-          const x = ringCenterX + Math.cos(angle) * symbolRadius;
-          const y = ringCenterY + Math.sin(angle) * symbolRadius;
-          positions.set(n.id, { x, y });
+        // Place focus nodes between query and symbols, near their mapped symbol if possible.
+        focusNodes.forEach((n, i) => {
+          const outgoing = edges.find((e) => e.source === n.id && String(e.type || '').toLowerCase() === 'maps_to');
+          const mappedSymbolPos = outgoing ? positions.get(outgoing.target) : undefined;
+          const fallbackX = FILE_X_START + (i * 150);
+          positions.set(n.id, { x: mappedSymbolPos ? mappedSymbolPos.x : fallbackX, y: FOCUS_Y });
         });
 
-        edgeSvg.setAttribute('viewBox', '0 0 1240 920');
-        edgeSvg.setAttribute('width', '1240');
-        edgeSvg.setAttribute('height', '920');
+        // Build symbol groups under their parent file when contains edge exists.
+        const fileToSymbols = new Map();
+        const unparentedSymbols = [];
+        symbols.forEach((s) => {
+          const parentEdge = edges.find((e) => e.target === s.id && String(e.type || '').toLowerCase() === 'contains');
+          if (parentEdge && parentEdge.source) {
+            const key = String(parentEdge.source);
+            const arr = fileToSymbols.get(key) || [];
+            arr.push(s);
+            fileToSymbols.set(key, arr);
+          } else {
+            unparentedSymbols.push(s);
+          }
+        });
 
-        (graph.edges || []).slice(0, 500).forEach((e) => {
+        files.forEach((f) => {
+          const parentPos = positions.get(f.id);
+          if (!parentPos) return;
+          const group = fileToSymbols.get(String(f.id)) || [];
+          if (!group.length) return;
+          const startX = parentPos.x - ((group.length - 1) * 62) / 2;
+          group.forEach((s, idx) => {
+            positions.set(s.id, { x: startX + (idx * 62), y: SYMBOL_Y });
+          });
+        });
+
+        if (unparentedSymbols.length) {
+          let baseX = FILE_X_START;
+          unparentedSymbols.forEach((s, idx) => {
+            positions.set(s.id, { x: baseX + ((idx % 12) * 72), y: SYMBOL_Y + 110 + Math.floor(idx / 12) * 80 });
+          });
+        }
+
+        const allPos = Array.from(positions.values());
+        const maxX = allPos.length ? Math.max(...allPos.map((p) => p.x)) : 1200;
+        const maxY = allPos.length ? Math.max(...allPos.map((p) => p.y)) : 920;
+        const canvasW = Math.max(1240, maxX + 180);
+        const canvasH = Math.max(920, maxY + 200);
+        mapEl.style.minWidth = canvasW + 'px';
+        mapEl.style.minHeight = canvasH + 'px';
+
+        edgeSvg.setAttribute('viewBox', '0 0 ' + canvasW + ' ' + canvasH);
+        edgeSvg.setAttribute('width', String(canvasW));
+        edgeSvg.setAttribute('height', String(canvasH));
+
+        edges.forEach((e) => {
           const p1 = positions.get(e.source);
           const p2 = positions.get(e.target);
           if (!p1 || !p2) return;
@@ -198,9 +251,24 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
           line.setAttribute('y1', String(p1.y));
           line.setAttribute('x2', String(p2.x));
           line.setAttribute('y2', String(p2.y));
-          line.setAttribute('stroke', 'rgba(255,255,255,0.24)');
-          line.setAttribute('stroke-width', e.type === 'contains' ? '1.2' : '1');
+          const relation = String(e.type || '').toLowerCase();
+          line.setAttribute('stroke', relation === 'contains' ? 'rgba(181,199,255,0.55)' : 'rgba(255,255,255,0.22)');
+          line.setAttribute('stroke-width', relation === 'contains' ? '1.5' : '1.0');
+          if (relation !== 'contains') {
+            line.setAttribute('stroke-dasharray', '4 4');
+          }
           edgeSvg.appendChild(line);
+
+          if (relation) {
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('x', String((p1.x + p2.x) / 2));
+            label.setAttribute('y', String((p1.y + p2.y) / 2 - 6));
+            label.setAttribute('fill', 'rgba(255,255,255,0.82)');
+            label.setAttribute('font-size', '10');
+            label.setAttribute('text-anchor', 'middle');
+            label.textContent = relation;
+            edgeSvg.appendChild(label);
+          }
         });
 
         nodes.forEach((n) => {

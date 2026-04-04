@@ -117,6 +117,21 @@ export class QAPanel {
           .replace(/>/g, '&gt;');
       }
 
+      function markdownToPlainText(value) {
+        const src = String(value || '');
+        return src
+          .replace(/\x60\x60\x60[\s\S]*?\x60\x60\x60/g, (m) => m.replace(/\x60\x60\x60/g, '').trim())
+          .replace(/\x60([^\x60]+)\x60/g, '$1')
+          .replace(/^#{1,6}\s+/gm, '')
+          .replace(/^>\s?/gm, '')
+          .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/\*([^*]+)\*/g, '$1')
+          .replace(/^\s*[-*+]\s+/gm, '')
+          .replace(/^\s*\d+\.\s+/gm, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
+
       function ask() {
         const q = qInput.value.trim();
         if (!q) {
@@ -149,7 +164,7 @@ export class QAPanel {
           const chunks = payload.chunks || [];
           const citations = payload.citations || [];
           const evidenceCount = (payload.source === 'ask-agent' ? citations.length : chunks.length);
-          const answerText = String(payload.answer || '');
+          const answerText = markdownToPlainText(payload.answer || '');
           const findingsSplit = answerText.split('\nFindings:');
           const directAnswer = findingsSplit[0] || answerText;
           const evidenceSummary = findingsSplit.length > 1 ? ('Findings:' + findingsSplit.slice(1).join('\nFindings:')) : '';
@@ -166,7 +181,7 @@ export class QAPanel {
           if (evidenceSummary.trim()) {
             answerEl.innerHTML += '<div class="chunk">'
               + '<div class="meta">Evidence Summary</div>'
-              + '<pre>' + escapeHtml(evidenceSummary.trim()) + '</pre>'
+                + '<pre>' + escapeHtml(markdownToPlainText(evidenceSummary.trim())) + '</pre>'
               + '</div>';
           }
 
@@ -182,7 +197,7 @@ export class QAPanel {
 
           resultsEl.innerHTML = chunks.map((c) => {
             const scorePart = c.score ? (' | score=' + Number(c.score).toFixed(3)) : '';
-            const content = c.content ? c.content : '[Referenced by citation]';
+            const content = c.content ? markdownToPlainText(c.content) : '[Referenced by citation]';
             return '<div class="chunk">'
               + '<div class="meta">'
               + escapeHtml(c.file_path) + ':' + escapeHtml(c.start_line) + '-' + escapeHtml(c.end_line) + scorePart
