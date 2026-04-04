@@ -56,6 +56,21 @@ const customNodeStyles = {
     fontWeight: 700,
     textAlign: 'center',
   },
+  function: {
+    padding: '8px 12px',
+    borderRadius: '12px',
+    minWidth: 160,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#ffb020',
+    color: '#1f1400',
+    border: '2px solid rgba(0,0,0,0.18)',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.36)',
+    fontSize: '0.68rem',
+    fontWeight: 800,
+    textAlign: 'center',
+  },
   file: {
     padding: '10px 14px',
     borderRadius: '8px',
@@ -110,8 +125,8 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
     for (const n of rawNodes) {
       const nodeType = n.node_type || n.type || 'file';
       const width =
-        nodeType === 'query' ? 280 : nodeType === 'focus' ? 170 : nodeType === 'file' ? 220 : 170;
-      const height = nodeType === 'query' ? 76 : nodeType === 'focus' ? 56 : nodeType === 'file' ? 74 : 58;
+        nodeType === 'query' ? 280 : nodeType === 'focus' ? 170 : nodeType === 'function' ? 170 : nodeType === 'file' ? 220 : 170;
+      const height = nodeType === 'query' ? 76 : nodeType === 'focus' ? 56 : nodeType === 'function' ? 56 : nodeType === 'file' ? 74 : 58;
       g.setNode(n.id, { width, height, nodeType });
     }
 
@@ -147,6 +162,8 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
             ? customNodeStyles.query
             : nodeType === 'focus'
               ? customNodeStyles.focus
+              : nodeType === 'function'
+                ? customNodeStyles.function
               : nodeType === 'symbol'
                 ? customNodeStyles.symbol
                 : customNodeStyles.file,
@@ -155,18 +172,19 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
 
     const positionedEdges = rawEdges.map((e: any, i: number) => {
       const relation = e.relation || e.type || '';
+      const color = relation === 'fallbacks_to' ? '#ff6b6b' : relation === 'verifies' ? '#00c2a8' : relation === 'checks_coverage' ? '#6fa8ff' : 'var(--color-edge)';
       return {
         id: `e${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
         animated: relation !== 'contains',
-        style: { stroke: 'var(--color-edge)', strokeWidth: 2 },
+        style: { stroke: color, strokeWidth: 2.4 },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: 'var(--color-edge)',
+          color,
         },
         label: relation,
-        labelStyle: { fill: '#aaa', fontSize: 10, fontWeight: 700 },
+        labelStyle: { fill: '#bbb', fontSize: 10, fontWeight: 800 },
       } as Edge;
     });
 

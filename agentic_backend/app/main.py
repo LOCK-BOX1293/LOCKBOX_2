@@ -601,6 +601,71 @@ def _build_focused_graph(
     def _is_generic_symbol_name(name: str) -> bool:
         return name.strip().lower() in {"main", "__init__", "index", "config", "setup"}
 
+    def _is_pipeline_noise_symbol(name: str, symbol_type: str) -> bool:
+        n = name.strip().lower()
+        st = symbol_type.strip().lower()
+        if n in {"__init__", "main", "index"}:
+            return True
+        if n in {
+            "load_dotenv",
+            "load_env_config",
+            "envconfig",
+            "pipelineconfig",
+            "config",
+        }:
+            return True
+        if st == "module":
+            return True
+        return False
+
+    q_lower = q.lower()
+    pipeline_like_query = any(
+        k in q_lower
+        for k in {
+            "pipeline",
+            "flow",
+            "how",
+            "steps",
+            "fallback",
+            "verify",
+            "coverage",
+            "claim",
+            "research",
+            "news",
+        }
+    )
+
+    def _relation_for_symbol(name: str, chunk_content: str) -> str:
+        n = (name or "").strip().lower()
+        c = (chunk_content or "").lower()
+        if "fallback" in n or "fallback" in c:
+            return "fallbacks_to"
+        if "verify" in n:
+            return "verifies"
+        if "generate_claim_plan" in n or ("generate" in n and "claim" in n):
+            return "plans_claims"
+        if "coverage" in n:
+            return "checks_coverage"
+        if "scrape" in n or "extract" in n:
+            return "extracts_text"
+        if "fetch" in n or "client" in n:
+            return "fetches"
+        if n == "run" or "run_pipeline" in n or "pipeline_service" in n:
+            return "orchestrates"
+        if "load" in n or "config" in n:
+            return "configures"
+        return "uses"
+
+    def _normalize_edge_type(t: str) -> str:
+        raw = (t or "").strip().lower()
+        if raw == "contains":
+            return "defines"
+        if raw == "references":
+            return "uses"
+        if raw in {"calls", "imports", "uses", "fallbacks_to", "verifies"}:
+            return raw
+        return "uses"
+
     nodes: list[dict] = []
     edges: list[dict] = []
     node_ids: set[str] = set()
@@ -622,6 +687,14 @@ def _build_focused_graph(
 
     for c in chunks:
         file_path = c.get("file_path")
+
+        # For pipeline/flow queries, skip trivial package marker files.
+        if (
+            pipeline_like_query
+            and file_path
+            and str(file_path).endswith("/__init__.py")
+        ):
+            continue
         if path_prefix and file_path and not str(file_path).startswith(path_prefix):
             continue
         if file_path and file_path not in node_ids:
@@ -636,7 +709,7 @@ def _build_focused_graph(
                 }
             )
         if file_path:
-            edges.append({"source": qid, "target": file_path, "type": "focuses_on"})
+            edges.append({"source": qid, "target": file_path, "type": "uses"})
 
         # Resolve nearby symbols in the same range
         if file_path:
@@ -672,8 +745,27 @@ def _build_focused_graph(
                     continue
 
                 name = str(s.get("name") or "")
+                symbol_type = str(s.get("symbol_type") or "")
                 # Keep generic symbols only when explicitly retrieved in chunk refs.
                 if _is_generic_symbol_name(name) and sid not in retrieved_refs:
+                    continue
+
+                # For flow queries, suppress module symbols in favor of concrete functions/classes.
+                if pipeline_like_query and symbol_type.lower() == "module":
+                    continue
+                if (
+                    pipeline_like_query
+                    and _is_pipeline_noise_symbol(name, symbol_type)
+                    and sid not in retrieved_refs
+                ):
+                    continue
+
+                if (
+                    pipeline_like_query
+                    and name.strip().lower() == "__init__"
+                    and "init" not in q_lower
+                    and "setup" not in q_lower
+                ):
                     continue
 
                 # Avoid module-vs-function same-name duplication within same file.
@@ -709,11 +801,23 @@ def _build_focused_graph(
                             "reason": c.get("reason", "retrieval"),
                         }
                     )
-                edges.append({"source": file_path, "target": sid, "type": "contains"})
+                edges.append(
+                    {
+                        "source": file_path,
+                        "target": sid,
+                        "type": _relation_for_symbol(name, c.get("content", "")),
+                    }
+                )
 
                 # Synthetic function-focus node for highly relevant chunks
-                if str(s.get("symbol_type") or "").lower() in {"function", "class"}:
+                if symbol_type.lower() in {"function", "class"}:
                     if _is_generic_symbol_name(name) and sid not in retrieved_refs:
+                        continue
+                    if (
+                        pipeline_like_query
+                        and _is_pipeline_noise_symbol(name, symbol_type)
+                        and sid not in retrieved_refs
+                    ):
                         continue
                     focus_id = f"focus::{sid}"
                     if focus_id not in node_ids:
@@ -723,7 +827,7 @@ def _build_focused_graph(
                                 "id": focus_id,
                                 "label": f"{s.get('name')} ({str(s.get('file_path') or '').split('/')[-1]})",
                                 "focus_name": f"{s.get('name')}()"
-                                if str(s.get("symbol_type") or "").lower() == "function"
+                                if symbol_type.lower() == "function"
                                 else str(s.get("name") or "symbol"),
                                 "display_label": f"{s.get('name')} ({str(s.get('file_path') or '').split('/')[-1]})",
                                 "type": "focus",
@@ -732,8 +836,16 @@ def _build_focused_graph(
                                 "file_path": s.get("file_path"),
                             }
                         )
-                    edges.append({"source": qid, "target": focus_id, "type": "selects"})
-                    edges.append({"source": focus_id, "target": sid, "type": "maps_to"})
+                    edges.append(
+                        {"source": qid, "target": focus_id, "type": "highlights"}
+                    )
+                    edges.append(
+                        {
+                            "source": focus_id,
+                            "target": sid,
+                            "type": _relation_for_symbol(name, c.get("content", "")),
+                        }
+                    )
 
     if symbol_ids:
         for e in store.edges.find(
@@ -775,7 +887,7 @@ def _build_focused_graph(
                     {
                         "source": s,
                         "target": t,
-                        "type": e.get("edge_type", "related"),
+                        "type": _normalize_edge_type(e.get("edge_type", "related")),
                         "weight": float(e.get("weight", 1.0)),
                     }
                 )
