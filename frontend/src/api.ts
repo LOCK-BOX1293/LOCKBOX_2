@@ -2,10 +2,10 @@ export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8081'
 
 let resolvedApiBase: string | null = null;
 
-function withDefaultPort(url: string, port: string): string {
+function withPort(url: string, port: string): string {
   try {
     const u = new URL(url);
-    if (!u.port) u.port = port;
+    u.port = port;
     return u.toString().replace(/\/$/, '');
   } catch {
     return url;
@@ -14,7 +14,7 @@ function withDefaultPort(url: string, port: string): string {
 
 function apiBaseCandidates(): string[] {
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const sameHost8081 = currentOrigin ? withDefaultPort(currentOrigin, '8081') : '';
+  const sameHost8081 = currentOrigin ? withPort(currentOrigin, '8081') : '';
   const list = [
     sameHost8081,
     API_BASE,
