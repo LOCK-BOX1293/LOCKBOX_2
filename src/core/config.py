@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     index_top_k_default: int = 5
     rerank_enabled: bool = False
 
+    superplane_base_url: Optional[str] = None
+    guard_min_confidence: float = 0.35
+
     # OpenAI specific (if selected)
     openai_api_key: Optional[str] = None
     

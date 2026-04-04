@@ -1,0 +1,20 @@
+{
+  "name": "multi_agent_rag_pipeline_v1",
+  "sequence": ["role", "memory", "orchestrator", "guard"],
+  "routing": {
+    "skip_memory_if_simple": true,
+    "force_memory_if_debug": true
+  },
+  "observability": {
+    "log_latency": true,
+    "log_failures": true,
+    "log_trace_ids": true,
+    "redact_sensitive_fields": ["query", "content"]
+  },
+  "response_schema": {
+    "answer": "string",
+    "agents_used": ["string"],
+    "confidence": "number",
+    "sources": ["string"]
+  }
+}

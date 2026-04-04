@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lockbox Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f8f6f1;
+      --ink: #1d1a16;
+      --muted: #6d655d;
+      --line: #d8d0c6;
+      --card: #fffcf8;
+      --accent: #e4572e;
+      --accent-2: #1768ac;
+      --ok: #1b8a5a;
+      --warn: #9e6a03;
+      --err: #a22c29;
+      --mono: "IBM Plex Mono", monospace;
+      --sans: "Space Grotesk", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #ffe1d5 0%, transparent 60%),
+        radial-gradient(900px 380px at 100% 0%, #dfefff 0%, transparent 55%),
+        var(--bg);
+    }
+    .shell {
+      max-width: 1320px;
+      margin: 24px auto;
+      padding: 0 16px 28px;
+      display: grid;
+      gap: 14px;
+    }
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 21px;
+      letter-spacing: .01em;
+    }
+    .hero p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .status-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-family: var(--mono);
+      background: #fff;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .card {
+      grid-column: span 6;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 220px;
+    }
+    .card.wide { grid-column: span 12; }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 9px;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    input, select, textarea, button {
+      font: inherit;
+    }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    textarea { min-height: 96px; resize: vertical; font-family: var(--mono); }
+    .f1 { flex: 1 1 180px; }
+    button {
+      border: 1px solid var(--ink);
+      border-radius: 10px;
+      background: var(--ink);
+      color: #fff;
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: transform .12s ease, background .12s ease;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    button:hover { transform: translateY(-1px); }
+    button.secondary {
+      background: #fff;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    button.accent { background: var(--accent); border-color: var(--accent); }
+    button.info { background: var(--accent-2); border-color: var(--accent-2); }
+    .out {
+      border: 1px dashed var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 120px;
+      white-space: pre-wrap;
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow: auto;
+      max-height: 300px;
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+    @media (max-width: 980px) {
+      .card { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero">
+      <div>
+        <h1>Lockbox Superplane Control Center</h1>
+        <p>Operate indexing, pipeline routing, agents, and retrieval from one place.</p>
+      </div>
+      <div class="status-pill" id="healthPill">health: unknown</div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Runtime</h2>
+        <div class="meta">Health and quick diagnostics.</div>
+        <div class="row">
+          <button class="info" onclick="checkHealth()">Check Health</button>
+          <button class="secondary" onclick="listRuns()">List Index Runs</button>
+        </div>
+        <div class="out" id="runtimeOut">Ready.</div>
+      </section>
+
+      <section class="card">
+        <h2>Retrieve / Superplane</h2>
+        <div class="meta">Main user query path and full orchestration execution.</div>
+        <div class="row">
+          <input class="f1" id="repoId" value="lockbox2" placeholder="repo_id" />
+          <input class="f1" id="branch" value="dev" placeholder="branch" />
+          <input class="f1" id="topK" value="5" placeholder="top_k" />
+        </div>
+        <div class="row">
+          <textarea id="query">How does the indexing pipeline work?</textarea>
+        </div>
+        <div class="row">
+          <button class="accent" onclick="runRetrieve()">GET /retrieve</button>
+          <button onclick="runSuperplane()">POST /superplane/execute</button>
+        </div>
+        <div class="out" id="queryOut"></div>
+      </section>
+
+      <section class="card">
+        <h2>Indexing Controls</h2>
+        <div class="meta">Start full/incremental jobs without CLI.</div>
+        <div class="row">
+          <input class="f1" id="repoPath" value="./" placeholder="repo path" />
+        </div>
+        <div class="row">
+          <button onclick="runIndex('full')">Run Full</button>
+          <button class="secondary" onclick="runIndex('incremental')">Run Incremental</button>
+          <button class="info" onclick="ensureIndexes()">Ensure Indexes</button>
+        </div>
+        <div class="row">
+          <input class="f1" id="runId" placeholder="run_id to inspect" />
+          <button class="secondary" onclick="checkRun()">Check Run</button>
+        </div>
+        <div class="out" id="indexOut"></div>
+      </section>
+
+      <section class="card">
+        <h2>Pipeline Config</h2>
+        <div class="meta">View and update dynamic routing rules used by local superplane runner.</div>
+        <div class="row">
+          <button onclick="loadPipeline()">Load Config</button>
+          <button class="accent" onclick="savePipeline()">Save Config</button>
+        </div>
+        <div class="row">
+          <textarea id="pipelineText"></textarea>
+        </div>
+        <div class="out" id="pipelineOut"></div>
+      </section>
+
+      <section class="card wide">
+        <h2>Raw Agent Calls</h2>
+        <div class="meta">Call each microservice endpoint independently for debugging and tests.</div>
+        <div class="row">
+          <button onclick="callAgent('/role-agent')">Role Agent</button>
+          <button onclick="callAgent('/memory-agent')">Memory Agent</button>
+          <button onclick="callAgent('/orchestrator')">Orchestrator (sample)</button>
+          <button onclick="callAgent('/guard')">Guard (sample)</button>
+        </div>
+        <div class="out" id="agentOut"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    function pretty(obj) {
+      return typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+    }
+
+    async function api(url, opts = {}) {
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+      const txt = await res.text();
+      let data = txt;
+      try { data = JSON.parse(txt); } catch (_) {}
+      if (!res.ok) throw new Error(pretty(data));
+      return data;
+    }
+
+    function currentBase() {
+      return {
+        query: document.getElementById('query').value,
+        repo_id: document.getElementById('repoId').value,
+        branch: document.getElementById('branch').value,
+        top_k: Number(document.getElementById('topK').value || 5)
+      };
+    }
+
+    async function checkHealth() {
+      const out = document.getElementById('runtimeOut');
+      try {
+        const data = await api('/health');
+        out.textContent = pretty(data);
+        document.getElementById('healthPill').textContent = 'health: ok';
+        document.getElementById('healthPill').className = 'status-pill ok';
+      } catch (e) {
+        out.textContent = String(e);
+        document.getElementById('healthPill').textContent = 'health: failed';
+        document.getElementById('healthPill').className = 'status-pill err';
+      }
+    }
+
+    async function runRetrieve() {
+      const out = document.getElementById('queryOut');
+      const p = currentBase();
+      const qs = new URLSearchParams({ q: p.query, repo_id: p.repo_id, branch: p.branch, top_k: String(p.top_k) });
+      out.textContent = 'Running /retrieve ...';
+      try {
+        const data = await api('/retrieve?' + qs.toString());
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function runSuperplane() {
+      const out = document.getElementById('queryOut');
+      out.textContent = 'Running /superplane/execute ...';
+      try {
+        const data = await api('/superplane/execute', { method: 'POST', body: JSON.stringify(currentBase()) });
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function runIndex(mode) {
+      const out = document.getElementById('indexOut');
+      const p = currentBase();
+      const body = { repo_path: document.getElementById('repoPath').value, repo_id: p.repo_id, branch: p.branch };
+      out.textContent = 'Starting index job ...';
+      try {
+        const data = await api('/admin/index/' + mode, { method: 'POST', body: JSON.stringify(body) });
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function ensureIndexes() {
+      const out = document.getElementById('indexOut');
+      out.textContent = 'Ensuring indexes ...';
+      try {
+        const data = await api('/admin/index/ensure-indexes', { method: 'POST' });
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function checkRun() {
+      const out = document.getElementById('indexOut');
+      const runId = document.getElementById('runId').value;
+      if (!runId) {
+        out.textContent = 'Provide run_id first.';
+        return;
+      }
+      try {
+        const data = await api('/admin/index/runs/' + encodeURIComponent(runId));
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function listRuns() {
+      const out = document.getElementById('runtimeOut');
+      try {
+        const data = await api('/admin/index/runs');
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function loadPipeline() {
+      const out = document.getElementById('pipelineOut');
+      try {
+        const data = await api('/admin/pipeline');
+        document.getElementById('pipelineText').value = pretty(data);
+        out.textContent = 'Loaded.';
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function savePipeline() {
+      const out = document.getElementById('pipelineOut');
+      try {
+        const config = JSON.parse(document.getElementById('pipelineText').value);
+        const data = await api('/admin/pipeline', { method: 'PUT', body: JSON.stringify(config) });
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    async function callAgent(path) {
+      const out = document.getElementById('agentOut');
+      const base = currentBase();
+      try {
+        let payload = base;
+        if (path === '/orchestrator') {
+          payload = {
+            request: base,
+            role: { intent: 'qa', role: 'expert_architect', simple_query: false, debug_query: false, confidence: 0.8 },
+            memory: null,
+            agents_used: ['role', 'orchestrator']
+          };
+        }
+        if (path === '/guard') {
+          payload = {
+            answer: 'Sample response',
+            agents_used: ['role', 'orchestrator'],
+            confidence: 0.7,
+            sources: []
+          };
+        }
+        const data = await api(path, { method: 'POST', body: JSON.stringify(payload) });
+        out.textContent = pretty(data);
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    }
+
+    checkHealth();
+    loadPipeline();
+  </script>
+</body>
+</html>
