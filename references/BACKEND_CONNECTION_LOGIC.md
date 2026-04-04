@@ -31,6 +31,13 @@ VITE_API_BASE=http://localhost:8081
 
 ## API surface to wire
 
+0) Repository list + onboarding
+
+- `GET /repos` -> list existing indexed repos
+- `POST /index/full` -> onboard bring-your-own repo
+
+After onboarding, use selected `repo_id` for all following calls.
+
 ## 1) Ask endpoint (full agent pipeline)
 
 `POST /ask`

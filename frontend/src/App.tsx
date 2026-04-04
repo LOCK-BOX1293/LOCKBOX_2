@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { GraphCanvas } from './components/GraphCanvas';
 import { InspectorPanel } from './components/InspectorPanel';
-import { fetchGraphOverview, fetchNodeDetails, fetchEdgeContext, askQuestion } from './api';
+import { fetchGraphOverview, fetchNodeDetails, fetchEdgeContext, askQuestion, fetchRepos, runFullIndex } from './api';
 
 function App() {
   const [mode, setMode] = useState<'full' | 'focused'>('full');
@@ -19,16 +19,37 @@ function App() {
   const [repoId] = useState('hackbyte-small');
   const [branch] = useState('main');
   const [sessionId] = useState(`sess-${Date.now()}`);
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [repoList, setRepoList] = useState<any[]>([]);
+  const [repoPathInput, setRepoPathInput] = useState('');
+  const [newRepoId, setNewRepoId] = useState('');
 
   // Load initial graph
   useEffect(() => {
-    loadGraph();
+    if (selectedRepo) loadGraph();
   }, [mode]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await fetchRepos();
+        const repos = data?.repos || [];
+        setRepoList(repos);
+        if (repos.length > 0 && !selectedRepo) {
+          const first = repos[0].repo_id || repos[0].id;
+          if (first) setSelectedRepo(first);
+        }
+      } catch (e) {
+        console.error('Failed to load repos', e);
+      }
+    })();
+  }, []);
 
   const loadGraph = async (forcedQuery?: string) => {
     try {
       setLoading(true);
-      const data = await fetchGraphOverview(repoId, branch, mode, forcedQuery || query);
+      const activeRepo = selectedRepo || repoId;
+      const data = await fetchGraphOverview(activeRepo, branch, mode, forcedQuery || query);
       setGraphData(data);
       setSelectedNodeId(null);
       setPanelData(null);
@@ -44,13 +65,14 @@ function App() {
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const ask = await askQuestion(repoId, query, sessionId, role);
+      const activeRepo = selectedRepo || repoId;
+      const ask = await askQuestion(activeRepo, query, sessionId, role);
       setAnswerData(ask);
 
       if (ask?.graph?.nodes && ask?.graph?.edges) {
         setGraphData({ nodes: ask.graph.nodes, edges: ask.graph.edges });
       } else {
-        const focused = await fetchGraphOverview(repoId, branch, 'focused', query);
+        const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query);
         setGraphData(focused);
       }
 
@@ -68,7 +90,8 @@ function App() {
     setSelectedNodeId(node.id);
     const type = node.data?.type || 'file';
     try {
-      const data = await fetchNodeDetails(node.id, repoId, type, branch);
+      const activeRepo = selectedRepo || repoId;
+      const data = await fetchNodeDetails(node.id, activeRepo, type, branch);
       setPanelData(data);
     } catch (e) {
       console.error('Failed to load node details from backend', e);
@@ -84,7 +107,8 @@ function App() {
 
   const handleEdgeClick = async (edge: any) => {
     try {
-      const data = await fetchEdgeContext(edge.source, edge.target, repoId, branch);
+      const activeRepo = selectedRepo || repoId;
+      const data = await fetchEdgeContext(edge.source, edge.target, activeRepo, branch);
       setSelectedNodeId(`${edge.source} -> ${edge.target}`);
       setPanelData(data);
     } catch (e) {
@@ -100,6 +124,61 @@ function App() {
 
   return (
     <div className="layout-container">
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <strong>Repository</strong>
+        <select
+          value={selectedRepo || ''}
+          onChange={(e) => {
+            setSelectedRepo(e.target.value || null);
+            setMode('full');
+            setAnswerData(null);
+            setSelectedNodeId(null);
+            setPanelData(null);
+            setTimeout(() => loadGraph(), 0);
+          }}
+          style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px' }}
+        >
+          <option value="">Select repository...</option>
+          {repoList.map((r: any) => {
+            const id = r.repo_id || r.id;
+            const name = r.name || id;
+            return <option key={id} value={id}>{name} ({id})</option>;
+          })}
+        </select>
+
+        <span style={{ color: 'var(--text-muted)' }}>or bring your own:</span>
+        <input
+          placeholder="repo id"
+          value={newRepoId}
+          onChange={(e) => setNewRepoId(e.target.value)}
+          style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px' }}
+        />
+        <input
+          placeholder="repo path (/home/...)"
+          value={repoPathInput}
+          onChange={(e) => setRepoPathInput(e.target.value)}
+          style={{ minWidth: 280, background: 'var(--bg-base)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px' }}
+        />
+        <button
+          className="nav-button active"
+          onClick={async () => {
+            if (!newRepoId.trim() || !repoPathInput.trim()) return;
+            try {
+              await runFullIndex(repoPathInput.trim(), newRepoId.trim(), branch);
+              const data = await fetchRepos();
+              setRepoList(data?.repos || []);
+              setSelectedRepo(newRepoId.trim());
+              setMode('full');
+              setTimeout(() => loadGraph(), 0);
+            } catch (e) {
+              console.error('Index failed', e);
+            }
+          }}
+        >
+          Index Repo
+        </button>
+      </div>
+
       <Toolbar 
         mode={mode} 
         setMode={setMode} 
