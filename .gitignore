@@ -22,6 +22,11 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Keep root-level .vscode ignored, but allow extension debug config
+!hackbite-vscode/.vscode/
+!hackbite-vscode/.vscode/launch.json
+!hackbite-vscode/.vscode/tasks.json
+
 plan.md
 
 # Node / extension artifacts
