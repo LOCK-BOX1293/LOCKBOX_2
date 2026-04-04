@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api_models import IndexRequest, QueryResponse, RetrieveRequest
 from app.indexer.pipeline import IndexingPipeline
+from app.mindflow import MindflowOrchestrator, MindflowTurnRequest, MindflowTurnResponse
 from app.models import AskRequest, AskResponse
 from app.orchestrator import Orchestrator
 from app.retrieval.hybrid import HybridRetriever
@@ -17,6 +18,10 @@ store = MongoStore(uri=settings.mongodb_uri, db_name=settings.mongodb_db)
 indexer = IndexingPipeline(settings=settings, store=store)
 retriever = HybridRetriever(settings=settings, store=store)
 orchestrator = Orchestrator()
+mindflow = MindflowOrchestrator(
+    llm=orchestrator.llm,
+    drift_threshold=orchestrator.settings.mindflow_drift_threshold,
+)
 
 app = FastAPI(title="RoleReady Index + Retrieval API", version="1.0.0")
 
@@ -101,6 +106,14 @@ def retrieve_query(payload: RetrieveRequest) -> QueryResponse:
 def ask(payload: AskRequest) -> AskResponse:
     try:
         return orchestrator.ask(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/mindflow/turn", response_model=MindflowTurnResponse)
+def mindflow_turn(payload: MindflowTurnRequest) -> MindflowTurnResponse:
+    try:
+        return mindflow.run_turn(payload)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -372,7 +385,19 @@ def edge_context(
 
 
 def _build_full_graph(repo_id: str, branch: str) -> dict:
-    symbol_docs = list(
+    # Prevent visual overload: keep an important, bounded subset for "full" view.
+    MAX_NODES = 260
+    MAX_EDGES = 420
+
+    file_docs = list(
+        store.files.find(
+            {"repo_id": repo_id, "branch": branch},
+            {"_id": 0, "file_path": 1},
+        ).limit(3000)
+    )
+    file_paths = [f.get("file_path") for f in file_docs if f.get("file_path")]
+
+    all_symbols = list(
         store.symbols.find(
             {"repo_id": repo_id, "branch": branch},
             {
@@ -381,12 +406,84 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
                 "name": 1,
                 "symbol_type": 1,
                 "file_path": 1,
+                "start_line": 1,
             },
-        ).limit(5000)
+        ).limit(15000)
     )
+
+    def _priority(sym: dict) -> int:
+        t = (sym.get("symbol_type") or "").lower()
+        if t == "class":
+            return 4
+        if t == "module":
+            return 3
+        if t == "function":
+            return 2
+        # imports and unknowns are least important for first render
+        return 1
+
+    # Filter out import nodes for initial overview (major source of noise)
+    important = [s for s in all_symbols if (s.get("symbol_type") or "") != "import"]
+
+    # Keep at most first function per file plus all class/module symbols.
+    first_function_per_file: set[str] = set()
+    chosen: list[dict] = []
+    important_sorted = sorted(
+        important,
+        key=lambda s: (
+            -_priority(s),
+            str(s.get("file_path") or ""),
+            int(s.get("start_line") or 0),
+            str(s.get("name") or ""),
+        ),
+    )
+
+    for s in important_sorted:
+        t = (s.get("symbol_type") or "").lower()
+        fp = str(s.get("file_path") or "")
+        if t == "function":
+            if fp in first_function_per_file:
+                continue
+            first_function_per_file.add(fp)
+        chosen.append(s)
+
+    max_symbol_nodes = max(40, MAX_NODES - len(file_paths))
+    chosen = chosen[:max_symbol_nodes]
+    kept_symbol_ids = {s.get("symbol_id") for s in chosen if s.get("symbol_id")}
+
+    nodes = [{"id": f, "label": f, "type": "file"} for f in file_paths]
+    for s in chosen:
+        sid = s.get("symbol_id")
+        if not sid:
+            continue
+        nodes.append(
+            {
+                "id": sid,
+                "label": s.get("name"),
+                "type": "symbol",
+                "symbol_type": s.get("symbol_type"),
+                "file_path": s.get("file_path"),
+                "importance": _priority(s),
+            }
+        )
+
+    edges: list[dict] = []
+    for s in chosen:
+        fp = s.get("file_path")
+        sid = s.get("symbol_id")
+        if fp and sid:
+            edges.append(
+                {"source": fp, "target": sid, "type": "contains", "weight": 1.0}
+            )
+
     edge_docs = list(
         store.edges.find(
-            {"repo_id": repo_id, "branch": branch},
+            {
+                "repo_id": repo_id,
+                "branch": branch,
+                "from_symbol_id": {"$in": list(kept_symbol_ids)},
+                "to_symbol_id": {"$in": list(kept_symbol_ids)},
+            },
             {
                 "_id": 0,
                 "from_symbol_id": 1,
@@ -394,32 +491,8 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
                 "edge_type": 1,
                 "weight": 1,
             },
-        ).limit(10000)
+        ).limit(8000)
     )
-
-    nodes = []
-    edges = []
-    file_seen: set[str] = set()
-    for s in symbol_docs:
-        f = s.get("file_path") or ""
-        if f and f not in file_seen:
-            file_seen.add(f)
-            nodes.append({"id": f, "label": f, "type": "file"})
-        sid = s.get("symbol_id")
-        nodes.append(
-            {
-                "id": sid,
-                "label": s.get("name"),
-                "type": "symbol",
-                "symbol_type": s.get("symbol_type"),
-                "file_path": f,
-            }
-        )
-        if f and sid:
-            edges.append(
-                {"source": f, "target": sid, "type": "contains", "weight": 1.0}
-            )
-
     for e in edge_docs:
         edges.append(
             {
@@ -432,17 +505,39 @@ def _build_full_graph(repo_id: str, branch: str) -> dict:
 
     uniq_edges = {}
     for e in edges:
-        uniq_edges[(e.get("source"), e.get("target"), e.get("type"))] = e
+        key = (e.get("source"), e.get("target"), e.get("type"))
+        uniq_edges[key] = e
+    edge_list = list(uniq_edges.values())[:MAX_EDGES]
+
+    # Final node trim safeguard (keeps files + top symbols)
+    if len(nodes) > MAX_NODES:
+        file_nodes = [n for n in nodes if n.get("type") == "file"]
+        symbol_nodes = [n for n in nodes if n.get("type") == "symbol"]
+        symbol_nodes = sorted(
+            symbol_nodes,
+            key=lambda n: (-int(n.get("importance") or 0), str(n.get("label") or "")),
+        )
+        nodes = file_nodes + symbol_nodes[: max(0, MAX_NODES - len(file_nodes))]
+        kept_ids = {n.get("id") for n in nodes}
+        edge_list = [
+            e
+            for e in edge_list
+            if (e.get("source") in kept_ids and e.get("target") in kept_ids)
+        ]
 
     return {
         "mode": "full",
         "repo_id": repo_id,
         "branch": branch,
         "nodes": nodes,
-        "edges": list(uniq_edges.values()),
+        "edges": edge_list,
         "meta": {
             "node_count": len(nodes),
-            "edge_count": len(uniq_edges),
+            "edge_count": len(edge_list),
+            "raw_symbol_count": len(all_symbols),
+            "filtered_symbol_count": len(chosen),
+            "truncated": len(all_symbols) > len(chosen),
+            "strategy": "files + class/module + first-function-per-file (imports hidden)",
         },
     }
 
