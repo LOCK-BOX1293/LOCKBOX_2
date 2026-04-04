@@ -54,5 +54,6 @@ Note: backend is not required for commands to appear. Backend is required only f
 - `hackbite.backendUrl` (default `http://localhost:8081`)
 - `hackbite.repoBranch` (default `main`)
 - `hackbite.autoIndex` (default `true`)
+- `hackbite.indexTimeoutMs` (default `600000`)
 - `hackbite.role`
 - `hackbite.apiKey` (optional)

@@ -74,6 +74,12 @@
           "default": true,
           "description": "Attempt indexing when workspace opens and no successful index exists"
         },
+        "hackbite.indexTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "minimum": 60000,
+          "description": "Timeout for index API calls in milliseconds"
+        },
         "hackbite.role": {
           "type": "string",
           "default": "backend",
