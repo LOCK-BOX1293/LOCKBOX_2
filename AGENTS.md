@@ -18,7 +18,7 @@ This file defines the specialized agents used in Hackbite 2.
    - Builds vector index
    - Builds lexical (BM25) index
    - Builds code relation graph
-
+  
 4. **Retrieval Agent**
    - Runs hybrid retrieval (vector + lexical + graph)
    - Reranks results
