@@ -1,121 +1,224 @@
-# Hackbite 2 Vectorization and Retrieval System
+# CODELENS - Multi-Agent Intelligence & Visualization AI System
 
-A production-ready end-to-end Python system that scans a source repository, extracts code symbols, generates semantic chunks with embeddings, and stores them in MongoDB Atlas for hybrid semantic search.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/frontend-React-61DAFB.svg)](https://react.dev/)
+[![MongoDB](https://img.shields.io/badge/database-MongoDB-47A248.svg)](https://www.mongodb.com/)
+[![Google Gemini](https://img.shields.io/badge/Google-Gemini%20API-4285F4.svg)](https://ai.google.dev/)
 
-## Architecture
+CODELENS is an intelligent multi-agent code understanding system that combines hybrid retrieval, role-aware answering, and query-driven graph visualization to help teams reason about large codebases faster and with higher confidence.
 
-![Architecture](https://via.placeholder.com/800x400.png?text=RepoScanner+->+ASTParser+->+SemanticChunker+->+BatchEmbedder+->+MongoDB)
+## Key Highlights
 
-The pipeline incorporates:
-1. **Scanner**: Scans standard directories respecting `.gitignore`.
-2. **Parser**: Uses tree-sitter to break down files into functions/classes.
-3. **Chunker**: Splits large files while keeping symbols logically intact.
-4. **Embedder**: Pluggable embedder (Sentence Transformers or OpenAI).
-5. **Storage**: Interacts with MongoDB. Upsert capabilities ensure idempotency.
-6. **Search**: Hybrid search using Reciprocal Rank Fusion on Vector Search and Lexical Search results.
+- Multi-agent orchestration for retrieval, explanation, visual mapping, and session memory.
+- Hybrid retrieval (vector + lexical + graph expansion) for high relevance.
+- Query-focused graph visualization for every answer (nodes + edges + evidence context).
+- Fast and cost-efficient workflow via incremental indexing and pluggable model providers.
+- Time-efficient developer experience for debugging, onboarding, and architecture discovery.
 
-## Quickstart
+## Problem Statement
 
-### Setup Requirements
+Engineering teams lose time when code understanding is fragmented across many files and modules:
+
+1. Search returns text matches, not reasoning paths.
+2. Cross-file dependencies are difficult to trace quickly.
+3. Onboarding and debugging cycles become expensive.
+4. Teams repeatedly spend time rediscovering known architecture patterns.
+
+## Proposed Solution
+
+CODELENS creates an AI-native code intelligence layer over repositories:
+
+1. Indexes source code into files, symbols, chunks, embeddings, and edges.
+2. Uses hybrid retrieval to fetch the most relevant context.
+3. Produces grounded answers with citations and confidence signals.
+4. Returns a per-query graph so users can see why an answer is correct.
+
+## Why Multi-Agent
+
+The platform separates responsibilities into cooperating agents:
+
+1. Orchestrator Agent: routes query workflow.
+2. Retrieval Agent: finds relevant context using hybrid search.
+3. Explanation Agent: composes grounded answer from retrieved evidence.
+4. Visual Mapper Agent: builds graph payload for interactive understanding.
+5. Session Memory Agent: maintains short-term conversation context.
+
+This architecture improves modularity, debugging visibility, and future scalability.
+
+## Agentic Workflow Demonstration
+```marmaid
+graph TD
+    A[User Query] --> B[Orchestrator]
+    B --> C[Memory Agent]
+    C --> D[Vector Embedding Generation]
+    D --> E[Semantic Search Execution]
+    E --> F[Relevant Code Snippets]
+    F --> B
+    B --> G[Role Prompter]
+    G --> H[Role-Based Context Analysis]
+    H --> I[Gemini API Integration]
+    I --> J[Intelligent Response Generation]
+    J --> B
+    B --> K[Orchestrated Final Response]
+```
+## Query-Level Visualization Impact
+
+For each query, visualization improves decision quality:
+
+1. Makes inter-file and inter-symbol relations visible.
+2. Shows focused context instead of overwhelming full-repo noise.
+3. Improves trust by linking answers to concrete graph evidence.
+4. Reduces time to root cause during debugging.
+5. Speeds architecture comprehension for new team members.
+
+## Repository Structure
+
+- `agentic_backend/`: primary multi-agent backend (FastAPI + indexing + retrieval + graph API).
+- `frontend/`: React/Vite UI for query and graph exploration.
+- `src/`: legacy/parallel pipeline components.
+- `infra/mongodb/`: Mongo schema and Atlas search index assets.
+- `docs/`: setup and integration notes.
+
+## Core Features and Workflow
+
+1. Repository indexing
+- Full and incremental indexing pipelines.
+- Symbol-aware chunking and embedding generation.
+
+2. Intelligent Q&A
+- `/ask` endpoint orchestrates retrieval + explanation.
+- Returns answer, confidence, citations, and graph payload.
+
+3. Graph exploration
+- `/graph/overview` supports full and focused graph modes.
+- `/graph/node/{node_id}` and `/graph/edge-context` provide deep drill-down.
+
+## Tech Stack
+
+Backend:
+
+- Python 3.11+
+- FastAPI + Uvicorn
+- Pydantic
+- MongoDB / MongoDB Atlas
+
+AI and retrieval:
+
+- Gemini integration for answer generation
+- Hybrid retrieval (vector + lexical + graph)
+- Pluggable embedding providers
+
+Frontend:
+
+- React + TypeScript
+- Vite
+- XYFlow + Dagre (graph rendering/layout)
+
+Quality:
+
+- Pytest
+- Mongomock
+- ESLint + TypeScript tooling
+
+## Quick Start (Current Repo)
+
+### Prerequisites
+
 1. Python 3.11+
-2. MongoDB Atlas Cluster (version 7.0+ for Vector/Search index integration)
-3. SentenceTransformers (default) or OpenAI credentials.
+2. Node.js 18+
+3. MongoDB Atlas URI (or local MongoDB)
 
-### Installation
+### Setup
+
 ```bash
 python -m venv venv
-# Windows:
+# Windows
 .\venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
 
 pip install -r requirements.txt
+pip install -r agentic_backend\requirements.txt
 ```
 
-### Configuration
-Create a `.env` in the root:
+Create root `.env` from `.env.example` and update required values such as:
+
 ```env
-MONGODB_URI=mongodb+srv://<USER>:<PASS>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+MONGODB_URI=<your-uri>
 MONGODB_DB=hackbite2
 EMBEDDING_PROVIDER=local
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-EMBEDDING_DIM=384
+EMBEDDING_MODEL=hash-v1
+EMBEDDING_DIM=1536
 ```
 
-## CLI Usage
+### Run Backend
 
-### 1. Ensure Database Indexes
-This command sets up the necessary MongoDB uniqueness constraints and Atlas Search indexes. 
-*(Note: Attempting to create Atlas Search indexes via pymongo CLI requires MongoDB 7.0+)*
 ```bash
-python -m src.cli.main index ensure-indexes
+.\run_api.ps1
 ```
 
-### 2. Full Indexing
-Perform a clean indexing of the target repository.
+Backend default URL: `http://localhost:8081`
+
+### Run Frontend
+
 ```bash
-python -m src.cli.main index full \
-    --repo-path ./ \
-    --repo-id myconfig-repo \
-    --branch main
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-### 3. Incremental Indexing
-Updates the index efficiently by relying on file content hashing.
-```bash
-python -m src.cli.main index incremental \
-    --repo-path ./ \
-    --repo-id myconfig-repo \
-    --branch main
-```
+Frontend default URL: `http://localhost:5173`
 
-### 4. Search and Retrieve
-Uses hybrid search combining Atlas Vector Search and regular Atlas Search.
-```bash
-python -m src.cli.main retrieve query \
-    --repo-id myconfig-repo \
-    --q "How does the indexing pipeline work?" \
-    --top-k 3
-```
+## API Highlights
+
+- `GET /health`
+- `GET /repos`
+- `POST /index/full`
+- `POST /index/incremental`
+- `POST /retrieve/query`
+- `POST /ask`
+- `GET /graph/overview`
+- `GET /graph/node/{node_id}`
+- `GET /graph/edge-context`
+
+## Performance, Cost, and Time Efficiency
+
+Performance:
+
+- Focused retrieval and graph caps keep response flow fast.
+- Incremental indexing avoids unnecessary full recomputation.
+
+Cost efficiency:
+
+- Pluggable providers allow budget-aware model selection.
+- Evidence-first retrieval reduces token-heavy blind generation.
+
+Time efficiency:
+
+- Faster root-cause analysis and code navigation.
+- Lower onboarding time through graph-first architecture visibility.
+
+## Business Model and Future Scope
+
+Potential directions:
+
+1. SaaS offering for engineering teams (seat + usage tiers).
+2. Enterprise private deployment with compliance controls.
+3. API/SDK integration with IDE and DevOps workflows.
+4. Advanced modules: architecture drift alerts, impact analysis, and automated documentation.
+
+Near-term roadmap:
+
+1. Richer inter-file relation extraction across more languages.
+2. Multi-hop graph reasoning with controllable depth.
+3. Enhanced query-level graph explainability and ranking diagnostics.
+
+## Submission Checklist
+
+- [ ] All code in `src/` and `agentic_backend/` runs without errors
+- [ ] `ARCHITECTURE.md` has final architecture narrative and diagram
+- [ ] `EXPLANATION.md` includes planning, memory/tool use, and limitations
+- [ ] `DEMO.md` links a 3-5 minute demo with timestamped highlights
 
 ---
 
-## Project Status
-
-🚧 Early architecture stage — designed for a strong V1 that is usable fast, then hardens into production.
-
----
-
-## Current Implementation (Agentic)
-
-The agentic backend bootstrap is now available in `agentic_backend/`.
-
-Implemented now:
-- FastAPI API with `POST /ask` and `GET /health`
-- Orchestrator flow: intent detection -> retrieval -> explanation -> visual map
-- Gemini integration using `GEMINI_API_KEY`
-- Pluggable retrieval adapter for vector teammate integration
-- Session memory adapter with MongoDB or in-memory fallback
-
-Run locally:
-
-```bash
-cd agentic_backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8081
-```
-
-Integration notes:
-- Retrieval service should expose `POST /retrieve` and return `chunks`.
-- If `RETRIEVAL_SERVICE_URL` is not set, the backend still runs but returns low-context answers.
-- If `MONGODB_URI` is set, session events are persisted in `events` collection.
-
----
-
-## License
-
-Add your preferred license (`MIT`, `Apache-2.0`, etc.)
-
-## Future Expansions (Migration Notes)
-- **Graph Expansion**: The data models already include `edges` and `symbols`. In the future, building an AST traversal module that detects references and function call traces will permit a graph agent to traverse from one symbol identifier to another.
-- **Expert-Answer Agents**: The retrieval layer currently outputs standard ContextPacks. Wrapping a language model (e.g., GPT-4 or Gemini 1.5 Pro) tightly around the `RetrieveResponse` to provide a summarized markdown output will readily complete the Generation part of RAG.
+Built for rapid, explainable, multi-agent code intelligence with measurable impact on developer speed, cost, and confidence.
