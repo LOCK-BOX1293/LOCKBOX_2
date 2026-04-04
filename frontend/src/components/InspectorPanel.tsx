@@ -1,10 +1,15 @@
-import { Beaker, Settings, Database, Shield, Zap } from 'lucide-react';
+import { Beaker, Settings, Database, Shield, Zap, Link2, FileCode2 } from 'lucide-react';
 import clsx from 'clsx';
 
 interface FunctionItem {
   name: string;
-  desc: string;
-  badges: string[];
+  desc?: string;
+  badges?: string[];
+  symbol_type?: string;
+  signature?: string;
+  start_line?: number;
+  end_line?: number;
+  tags?: string[];
 }
 
 interface InspectorPanelProps {
@@ -29,6 +34,16 @@ export function InspectorPanel({ nodeId, nodeData, onClose }: InspectorPanelProp
     }
   };
 
+  const trimCode = (code: string | undefined, maxLines = 120) => {
+    if (!code) return '';
+    const lines = code.split('\n');
+    if (lines.length <= maxLines) return code;
+    return `${lines.slice(0, maxLines).join('\n')}\n\n... (${lines.length - maxLines} more lines hidden)`;
+  };
+
+  const noteSummary = nodeData?.note_summary || nodeData?.summary || null;
+  const queryStructure = nodeData?.query_structure || nodeData?.structure || null;
+
   return (
     <div className="inspector-panel glass-panel">
       <div className="inspector-header">
@@ -42,6 +57,23 @@ export function InspectorPanel({ nodeId, nodeData, onClose }: InspectorPanelProp
       </div>
       
       <div className="inspector-content">
+        {noteSummary && (
+          <>
+            <div className="section-label">Query Note</div>
+            <div className="key-point" style={{ marginBottom: 12 }}>
+              <div className="key-point-bullet">◆</div>
+              <div>{noteSummary}</div>
+            </div>
+          </>
+        )}
+
+        {queryStructure && (
+          <>
+            <div className="section-label">Structure</div>
+            <pre className="code-block"><code>{typeof queryStructure === 'string' ? queryStructure : JSON.stringify(queryStructure, null, 2)}</code></pre>
+          </>
+        )}
+
         {nodeData.functions && nodeData.functions.length > 0 && (
           <>
             <div className="section-label">Functions</div>
@@ -49,11 +81,15 @@ export function InspectorPanel({ nodeId, nodeData, onClose }: InspectorPanelProp
               <div key={i} className="function-card">
                 <div className="function-name">
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-primary)' }}></div>
-                  {fn.name}()
+                  {fn.name}{fn.symbol_type === 'class' ? '' : '()'}
                 </div>
-                <div className="function-desc">{fn.desc}</div>
+                {fn.signature && <div className="function-desc" style={{ fontFamily: 'monospace' }}>{fn.signature}</div>}
+                {fn.start_line && fn.end_line && (
+                  <div className="function-desc">lines: {fn.start_line}-{fn.end_line}</div>
+                )}
+                {fn.desc && <div className="function-desc">{fn.desc}</div>}
                 <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
-                  {fn.badges.map((b) => (
+                  {(fn.badges || fn.tags || []).map((b) => (
                     <span 
                       key={b} 
                       className={clsx('function-badge', { 'critical': b.toLowerCase() === 'critical' })}
@@ -70,9 +106,9 @@ export function InspectorPanel({ nodeId, nodeData, onClose }: InspectorPanelProp
 
         {nodeData.code && (
           <div style={{ marginTop: '24px' }}>
-            <div className="section-label">Source</div>
+            <div className="section-label"><FileCode2 size={14} style={{ display: 'inline', marginRight: 6 }} />Source (trimmed)</div>
             <pre className="code-block">
-              <code>{nodeData.code}</code>
+              <code>{trimCode(nodeData.code, 100)}</code>
             </pre>
           </div>
         )}
@@ -92,12 +128,26 @@ export function InspectorPanel({ nodeId, nodeData, onClose }: InspectorPanelProp
         {/* If node is an edge context, show that instead */}
         {nodeData.edge_context && (
            <div style={{ marginTop: '24px' }}>
-             <div className="section-label">Edge Context</div>
+             <div className="section-label"><Link2 size={14} style={{ display: 'inline', marginRight: 6 }} />Connection Context</div>
              <p style={{fontSize: '0.9rem', color: 'var(--text-muted)'}}>{nodeData.edge_context}</p>
              <pre className="code-block" style={{marginTop: '12px'}}>
-               <code>{nodeData.edge_code_snippet}</code>
+               <code>{trimCode(nodeData.edge_code_snippet, 80)}</code>
              </pre>
-           </div>
+            </div>
+        )}
+
+        {nodeData.edge && (
+          <div style={{ marginTop: 12 }}>
+            <div className="section-label">Connection Metadata</div>
+            <pre className="code-block"><code>{JSON.stringify(nodeData.edge, null, 2)}</code></pre>
+          </div>
+        )}
+
+        {nodeData.from && nodeData.to && (
+          <div style={{ marginTop: 12 }}>
+            <div className="section-label">From ↔ To Snippets</div>
+            <pre className="code-block"><code>{`FROM: ${nodeData.from.file_path || nodeData.from.symbol_id || 'n/a'}\n${trimCode(nodeData.from.code, 30)}\n\nTO: ${nodeData.to.file_path || nodeData.to.symbol_id || 'n/a'}\n${trimCode(nodeData.to.code, 30)}`}</code></pre>
+          </div>
         )}
       </div>
     </div>

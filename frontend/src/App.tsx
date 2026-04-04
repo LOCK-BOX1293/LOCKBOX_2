@@ -77,7 +77,19 @@ function App() {
     try {
       const activeRepo = selectedRepo || repoId;
       const ask = await askQuestion(activeRepo, query, sessionId, role);
-      setAnswerData(ask);
+      const structure = {
+        query,
+        role,
+        repo: activeRepo,
+        citations: Array.isArray(ask?.citations) ? ask.citations.length : 0,
+        confidence: Number(ask?.confidence || 0),
+        intent: ask?.intent || 'unknown',
+      };
+      setAnswerData({
+        ...ask,
+        note_summary: `Intent: ${structure.intent}. Confidence: ${structure.confidence.toFixed(2)}. Citations: ${structure.citations}.`,
+        query_structure: structure,
+      });
 
       if (ask?.graph?.nodes && ask?.graph?.edges) {
         setGraphData({ nodes: ask.graph.nodes, edges: ask.graph.edges });
@@ -102,7 +114,10 @@ function App() {
     try {
       const activeRepo = selectedRepo || repoId;
       const data = await fetchNodeDetails(node.id, activeRepo, type, branch);
-      setPanelData(data);
+      setPanelData({
+        ...data,
+        note_summary: `Node selected from ${mode} graph for query context${query ? `: "${query}"` : ''}.`,
+      });
     } catch (e) {
       console.error('Failed to load node details from backend', e);
       setPanelData({
@@ -120,7 +135,17 @@ function App() {
       const activeRepo = selectedRepo || repoId;
       const data = await fetchEdgeContext(edge.source, edge.target, activeRepo, branch);
       setSelectedNodeId(`${edge.source} -> ${edge.target}`);
-      setPanelData(data);
+      setPanelData({
+        ...data,
+        edge_context: `${data?.edge?.edge_type || 'related'} connection between selected nodes`,
+        edge_code_snippet: `${(data?.from?.code || '').slice(0, 800)}\n\n---\n\n${(data?.to?.code || '').slice(0, 800)}`,
+        note_summary: `Connection picked for query${query ? `: "${query}"` : ''}.`,
+        query_structure: {
+          source: edge.source,
+          target: edge.target,
+          relation: edge.label || edge.type || 'related',
+        },
+      });
     } catch (e) {
       console.error('Failed to load edge context from backend', e);
       setSelectedNodeId(`${edge.source} -> ${edge.target}`);
@@ -222,8 +247,16 @@ function App() {
       />
       {answerData && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Answer ({answerData.intent})</div>
-          <div style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{answerData.answer}</div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Query Note ({answerData.intent})</div>
+          <div style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{answerData.note_summary || answerData.answer}</div>
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View full markdown answer</summary>
+            <div style={{ fontSize: '0.9rem', whiteSpace: 'pre-wrap', marginTop: 8 }}>{answerData.answer}</div>
+          </details>
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View query structure</summary>
+            <pre className="code-block" style={{ marginTop: 8 }}><code>{JSON.stringify(answerData.query_structure || {}, null, 2)}</code></pre>
+          </details>
           <div style={{ marginTop: 8, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             confidence: {Number(answerData.confidence || 0).toFixed(2)} | citations: {Array.isArray(answerData.citations) ? answerData.citations.length : 0}
           </div>

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import dagre from 'dagre';
 import type {
   Node,
   Edge,
@@ -55,44 +56,83 @@ const customNodeStyles = {
 };
 
 export function GraphCanvas({ data, onNodeClick, onEdgeClick }: GraphCanvasProps) {
-  // Convert backend data to React Flow format
-  const initialNodes: Node[] = useMemo(() => {
-    if (!data?.nodes) return [];
-    return data.nodes.map((n: any, i: number) => {
+  const layouted = useMemo(() => {
+    const rawNodes = (data?.nodes || []) as any[];
+    const rawEdges = (data?.edges || []) as any[];
+
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({
+      rankdir: 'LR',
+      nodesep: 40,
+      ranksep: 120,
+      edgesep: 20,
+    });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    for (const n of rawNodes) {
+      const nodeType = n.node_type || n.type || 'file';
+      const width = nodeType === 'file' ? 220 : 170;
+      const height = nodeType === 'file' ? 74 : 58;
+      g.setNode(n.id, { width, height, nodeType });
+    }
+
+    for (const e of rawEdges) {
+      if (e?.source && e?.target) {
+        g.setEdge(e.source, e.target);
+      }
+    }
+
+    dagre.layout(g);
+
+    const positionedNodes = rawNodes.map((n: any) => {
       const nodeType = n.node_type || n.type || 'file';
       const label = n.label || n.name || n.id;
-      // Basic circle layout math if no positions are given
-      const angle = (i / data.nodes.length) * Math.PI * 2;
-      const radius = 200 + (Math.random() * 100);
+      const dims = g.node(n.id) || { x: 0, y: 0, width: 180, height: 60 };
       return {
         id: n.id,
-        position: { x: Math.cos(angle) * radius + 400, y: Math.sin(angle) * radius + 300 },
-        data: { label, type: nodeType },
+        position: {
+          x: (dims.x || 0) - (dims.width || 180) / 2,
+          y: (dims.y || 0) - (dims.height || 60) / 2,
+        },
+        data: {
+          label,
+          type: nodeType,
+          score: n.relevance_score,
+          reason: n.reason,
+        },
         type: 'default',
-        style: nodeType === 'symbol' ? customNodeStyles.symbol : customNodeStyles.file
-      };
+        style: nodeType === 'symbol' ? customNodeStyles.symbol : customNodeStyles.file,
+      } as Node;
     });
+
+    const positionedEdges = rawEdges.map((e: any, i: number) => {
+      const relation = e.relation || e.type || '';
+      return {
+        id: `e${i}-${e.source}-${e.target}`,
+        source: e.source,
+        target: e.target,
+        animated: relation !== 'contains',
+        style: { stroke: 'var(--color-edge)', strokeWidth: 2 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: 'var(--color-edge)',
+        },
+        label: relation,
+        labelStyle: { fill: '#aaa', fontSize: 10, fontWeight: 700 },
+      } as Edge;
+    });
+
+    return { nodes: positionedNodes, edges: positionedEdges };
   }, [data]);
 
+  // Convert backend data to React Flow format
+  const initialNodes: Node[] = useMemo(() => {
+    return layouted.nodes;
+  }, [layouted]);
+
   const initialEdges: Edge[] = useMemo(() => {
-    if (!data?.edges) return [];
-    return data.edges.map((e: any, i: number) => {
-      const relation = e.relation || e.type || '';
-      return ({
-      id: `e${i}-${e.source}-${e.target}`,
-      source: e.source,
-      target: e.target,
-      animated: relation !== 'contains',
-      style: { stroke: 'var(--color-edge)', strokeWidth: 2 },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: 'var(--color-edge)',
-      },
-      label: relation,
-      labelStyle: { fill: '#aaa', fontSize: 10, fontWeight: 700 }
-    });
-    });
-  }, [data]);
+    return layouted.edges;
+  }, [layouted]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
