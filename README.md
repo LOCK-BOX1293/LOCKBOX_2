@@ -225,6 +225,32 @@ hackbite_2/
 
 ---
 
+## Current Implementation (Agentic)
+
+The agentic backend bootstrap is now available in `agentic_backend/`.
+
+Implemented now:
+- FastAPI API with `POST /ask` and `GET /health`
+- Orchestrator flow: intent detection -> retrieval -> explanation -> visual map
+- Gemini integration using `GEMINI_API_KEY`
+- Pluggable retrieval adapter for vector teammate integration
+- Session memory adapter with MongoDB or in-memory fallback
+
+Run locally:
+
+```bash
+cd agentic_backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8081
+```
+
+Integration notes:
+- Retrieval service should expose `POST /retrieve` and return `chunks`.
+- If `RETRIEVAL_SERVICE_URL` is not set, the backend still runs but returns low-context answers.
+- If `MONGODB_URI` is set, session events are persisted in `events` collection.
+
+---
+
 ## License
 
 Add your preferred license (`MIT`, `Apache-2.0`, etc.)
