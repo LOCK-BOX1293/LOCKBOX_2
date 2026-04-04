@@ -5,6 +5,8 @@ import { createIndexWorkspaceCommand, hasSuccessfulIndex } from "./commands/inde
 import { createOpenGraphCommand } from "./commands/openGraph";
 import { getHackbiteConfig } from "./config";
 import { HackbiteCodeLensProvider } from "./providers/CodeLensProvider";
+import { HackbiteHoverProvider } from "./providers/HoverProvider";
+import { SymbolTreeProvider, revealSymbol } from "./providers/SymbolTreeProvider";
 import { detectRepoIdentity, getPrimaryWorkspaceFolder } from "./utils/repoDetect";
 import { HackbiteStatusBar } from "./utils/statusBar";
 
@@ -27,6 +29,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   const codeLensProvider = new HackbiteCodeLensProvider();
+  const hoverProvider = new HackbiteHoverProvider();
+  const symbolTreeProvider = new SymbolTreeProvider();
   const selector: vscode.DocumentSelector = [
     { language: "python" },
     { language: "javascript" },
@@ -35,6 +39,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { language: "typescriptreact" },
   ];
   context.subscriptions.push(vscode.languages.registerCodeLensProvider(selector, codeLensProvider));
+  context.subscriptions.push(vscode.languages.registerHoverProvider(selector, hoverProvider));
+
+  const treeView = vscode.window.createTreeView("hackbite.symbolTree", {
+    treeDataProvider: symbolTreeProvider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(treeView);
+  context.subscriptions.push(vscode.commands.registerCommand("hackbite.refreshSymbolTree", async () => {
+    await symbolTreeProvider.rebuild();
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand("hackbite.revealSymbol", revealSymbol));
+  await symbolTreeProvider.rebuild();
 
   const incrementalDebounceMs = 2000;
   let saveTimer: NodeJS.Timeout | undefined;

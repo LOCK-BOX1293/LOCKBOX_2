@@ -31,6 +31,14 @@
       {
         "command": "hackbite.openGraph",
         "title": "Hackbite: Open Code Map"
+      },
+      {
+        "command": "hackbite.refreshSymbolTree",
+        "title": "Hackbite: Refresh Symbol Tree"
+      },
+      {
+        "command": "hackbite.revealSymbol",
+        "title": "Hackbite: Reveal Symbol"
       }
     ],
     "keybindings": [
@@ -78,6 +86,32 @@
           "description": "Optional API key sent as X-API-Key"
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hackbite",
+          "title": "Hackbite",
+          "icon": "media/hackbite.svg"
+        }
+      ]
+    },
+    "views": {
+      "hackbite": [
+        {
+          "id": "hackbite.symbolTree",
+          "name": "Code Symbols"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "hackbite.refreshSymbolTree",
+          "when": "view == hackbite.symbolTree",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {

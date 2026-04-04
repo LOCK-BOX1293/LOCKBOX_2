@@ -7,6 +7,8 @@ This extension integrates VS Code with the local Hackbite FastAPI backend (`http
 - `Hackbite: Index Workspace` command
 - `Hackbite: Ask a Question` webview panel (retrieval chunks + confidence)
 - CodeLens `Ask Hackbite` above functions/classes in supported languages
+- Hover summaries (one-line, cached) for symbols in supported languages
+- Sidebar `Hackbite -> Code Symbols` tree (file -> symbol) with click-to-reveal
 - `Hackbite: Open Code Map` basic graph overview panel
 - Auto repo detection from git origin URL (stable hashed repo id)
 - Status bar states for indexing and backend availability
