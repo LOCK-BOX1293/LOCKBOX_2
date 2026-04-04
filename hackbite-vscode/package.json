@@ -2,7 +2,7 @@
   "name": "hackbite-vscode",
   "displayName": "Hackbite",
   "description": "Hackbite VS Code client for indexing, retrieval, and code graph workflows",
-  "version": "0.0.4",
+  "version": "1.0.0",
   "publisher": "hackbite",
   "engines": {
     "vscode": "^1.80.0"
@@ -39,8 +39,7 @@
       {
         "command": "hackbite.revealSymbol",
         "title": "Hackbite: Reveal Symbol"
-      }
-      ,
+      },
       {
         "command": "hackbite.showLogs",
         "title": "Hackbite: Show Logs"
