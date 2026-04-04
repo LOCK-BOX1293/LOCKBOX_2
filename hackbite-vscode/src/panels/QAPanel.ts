@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { RetrieveResponse } from "../api/types";
+import { QAResponse } from "../api/types";
 
 interface AskContext {
   repoId: string;
@@ -8,7 +8,7 @@ interface AskContext {
 }
 
 interface QAPanelDependencies {
-  ask: (ctx: AskContext, question: string) => Promise<RetrieveResponse>;
+  ask: (ctx: AskContext, question: string) => Promise<QAResponse>;
 }
 
 export class QAPanel {
@@ -99,6 +99,7 @@ export class QAPanel {
       <button id="askBtn">Ask</button>
     </div>
     <div id="status" class="muted">Ready</div>
+    <div id="answer"></div>
     <div id="results"></div>
 
     <script nonce="${nonce}">
@@ -106,6 +107,7 @@ export class QAPanel {
       const askBtn = document.getElementById('askBtn');
       const qInput = document.getElementById('q');
       const statusEl = document.getElementById('status');
+      const answerEl = document.getElementById('answer');
       const resultsEl = document.getElementById('results');
 
       function escapeHtml(value) {
@@ -121,6 +123,7 @@ export class QAPanel {
           return;
         }
         statusEl.textContent = 'Retrieving relevant chunks...';
+        answerEl.innerHTML = '';
         resultsEl.innerHTML = '';
         vscode.postMessage({ type: 'ask', question: q });
       }
@@ -144,7 +147,26 @@ export class QAPanel {
         if (msg.type === 'result') {
           const payload = msg.payload;
           const chunks = payload.chunks || [];
-          statusEl.textContent = 'Confidence: ' + Number(payload.confidence || 0).toFixed(3) + ' | Chunks: ' + chunks.length;
+          const citations = payload.citations || [];
+          statusEl.textContent = 'Confidence: ' + Number(payload.confidence || 0).toFixed(3)
+            + ' | Chunks: ' + chunks.length
+            + ' | Source: ' + (payload.source || 'unknown');
+
+          answerEl.innerHTML = '<div class="chunk">'
+            + '<div class="meta">Answer</div>'
+            + '<pre>' + escapeHtml(payload.answer || '') + '</pre>'
+            + '</div>';
+
+          if (citations.length) {
+            const citationHtml = citations.map((c, i) => {
+              const why = c.why_relevant ? (' - ' + escapeHtml(c.why_relevant)) : '';
+              return '<div class="meta">[' + (i + 1) + '] '
+                + escapeHtml(c.file_path) + ':' + escapeHtml(c.start_line) + '-' + escapeHtml(c.end_line)
+                + why + '</div>';
+            }).join('');
+            answerEl.innerHTML += '<div class="chunk"><div class="meta">Citations</div>' + citationHtml + '</div>';
+          }
+
           resultsEl.innerHTML = chunks.map((c) => {
             const scorePart = c.score ? (' | score=' + Number(c.score).toFixed(3)) : '';
             return '<div class="chunk">'

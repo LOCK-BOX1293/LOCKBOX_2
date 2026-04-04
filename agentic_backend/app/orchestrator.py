@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.agents.specialists import (
     ExplanationAgent,
     VisualMapperAgent,
@@ -61,33 +63,40 @@ class Orchestrator:
 
         retrieval_result = self.retrieval.retrieve(
             project_id=req.project_id,
+            branch=req.branch,
             query=req.query,
             top_k=self.settings.retrieval_top_k,
+            path_prefix=req.path_prefix,
+            include_tests=req.include_tests,
         )
 
-        try:
-            raw_answer = self.explainer.explain(
-                query=req.query,
-                user_role=req.user_role,
-                chunks=retrieval_result.chunks,
-                history=history_text,
-            )
-        except Exception as exc:
-            # Graceful fallback: still provide retrieval-grounded response when LLM
-            # generation is unavailable (quota/network/model issues).
-            lines = [
-                "LLM generation unavailable; returning retrieval-grounded context.",
-                f"Reason: {str(exc)}",
-                "",
-                "Relevant evidence:",
-            ]
-            for i, c in enumerate(retrieval_result.chunks[:5], start=1):
-                lines.append(
-                    f"[{i}] {c.file_path}:{c.start_line}-{c.end_line} score={c.score:.4f}"
+        raw_answer: str
+        if self.settings.ask_force_local:
+            raw_answer = self._build_local_answer(req.query, retrieval_result.chunks)
+        else:
+            try:
+                raw_answer = self.explainer.explain(
+                    query=req.query,
+                    user_role=req.user_role,
+                    chunks=retrieval_result.chunks,
+                    history=history_text,
                 )
-                snippet = c.text.strip().replace("\n", " ")
-                lines.append(f"    {snippet[:220]}")
-            raw_answer = "\n".join(lines)
+            except Exception as exc:
+                # Graceful fallback: still provide retrieval-grounded response when LLM
+                # generation is unavailable (quota/network/model issues).
+                lines = [
+                    "LLM generation unavailable; returning retrieval-grounded context.",
+                    f"Reason: {str(exc)}",
+                    "",
+                    "Relevant evidence:",
+                ]
+                for i, c in enumerate(retrieval_result.chunks[:5], start=1):
+                    lines.append(
+                        f"[{i}] {c.file_path}:{c.start_line}-{c.end_line} score={c.score:.4f}"
+                    )
+                    snippet = c.text.strip().replace("\n", " ")
+                    lines.append(f"    {snippet[:220]}")
+                raw_answer = "\n".join(lines)
         answer, confidence, citations = parse_answer_payload(
             raw_answer, retrieval_result.chunks
         )
@@ -116,4 +125,39 @@ class Orchestrator:
             confidence=confidence,
             citations=citations,
             graph=graph,
+        )
+
+    def _build_local_answer(self, query: str, chunks) -> str:
+        if not chunks:
+            return json.dumps(
+                {
+                    "summary": "No indexed evidence found for this question on the selected branch.",
+                    "findings": [],
+                    "next_steps": [
+                        "Run indexing for the same repo_id and branch, then retry.",
+                        "Ask a narrower question with file/module names.",
+                    ],
+                    "confidence": 0.0,
+                }
+            )
+
+        top = chunks[:5]
+        findings = [
+            f"{c.file_path}:{c.start_line}-{c.end_line} (score {c.score:.3f})"
+            for c in top
+        ]
+        summary = (
+            f"Retrieved {len(chunks)} relevant chunks for: {query}. "
+            f"Top evidence comes from {top[0].file_path}."
+        )
+        return json.dumps(
+            {
+                "summary": summary,
+                "findings": findings,
+                "next_steps": [
+                    "Open cited files and lines to verify behavior.",
+                    "Refine question to a specific function for deeper answers.",
+                ],
+                "confidence": 0.62,
+            }
         )

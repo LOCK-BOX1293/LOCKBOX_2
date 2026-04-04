@@ -22,6 +22,7 @@ class Settings:
     mongodb_db: str
     retrieval_top_k: int
     mindflow_drift_threshold: float
+    ask_force_local: bool
 
 
 def get_settings() -> Settings:
@@ -35,4 +36,5 @@ def get_settings() -> Settings:
         ).strip(),
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "8")),
         mindflow_drift_threshold=float(os.getenv("MINDFLOW_DRIFT_THRESHOLD", "0.62")),
+        ask_force_local=(os.getenv("ASK_FORCE_LOCAL", "true").strip().lower() == "true"),
     )
