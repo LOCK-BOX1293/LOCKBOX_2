@@ -1,0 +1,93 @@
+{
+  "name": "hackbite-vscode",
+  "displayName": "Hackbite",
+  "description": "Hackbite VS Code client for indexing, retrieval, and code graph workflows",
+  "version": "0.0.1",
+  "publisher": "hackbite",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hackbite.indexWorkspace",
+        "title": "Hackbite: Index Workspace"
+      },
+      {
+        "command": "hackbite.ask",
+        "title": "Hackbite: Ask a Question"
+      },
+      {
+        "command": "hackbite.askPrefilled",
+        "title": "Hackbite: Ask About Symbol"
+      },
+      {
+        "command": "hackbite.openGraph",
+        "title": "Hackbite: Open Code Map"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "hackbite.ask",
+        "key": "ctrl+shift+h"
+      },
+      {
+        "command": "hackbite.openGraph",
+        "key": "ctrl+shift+g"
+      }
+    ],
+    "configuration": {
+      "title": "Hackbite",
+      "properties": {
+        "hackbite.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8081",
+          "description": "FastAPI backend URL"
+        },
+        "hackbite.repoBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "Default git branch if branch auto-detection fails"
+        },
+        "hackbite.autoIndex": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attempt indexing when workspace opens and no successful index exists"
+        },
+        "hackbite.role": {
+          "type": "string",
+          "default": "backend",
+          "enum": [
+            "backend",
+            "frontend",
+            "security",
+            "devops"
+          ],
+          "description": "Default role for ask flows"
+        },
+        "hackbite.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Optional API key sent as X-API-Key"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.8.3"
+  }
+}
