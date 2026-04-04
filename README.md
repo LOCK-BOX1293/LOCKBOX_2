@@ -47,7 +47,7 @@ The platform separates responsibilities into cooperating agents:
 This architecture improves modularity, debugging visibility, and future scalability.
 
 ## Agentic Workflow Demonstration
-```marmaid
+```mermaid
 graph TD
     A[User Query] --> B[Orchestrator]
     B --> C[Memory Agent]
@@ -62,6 +62,45 @@ graph TD
     J --> B
     B --> K[Orchestrated Final Response]
 ```
+
+## VS Code Extension Usage
+
+CODELENS is also designed to be used as a VS Code extension-style developer companion, so teams can ask codebase questions and explore architecture without leaving the editor.
+
+### Why this matters
+
+1. In-editor intelligence: developers get query answers, citations, and graph context directly where they code.
+2. Faster debugging: jump from answer to related file/symbol flow in fewer steps.
+3. Better onboarding: new engineers can understand system structure from visual query graphs.
+4. Cost efficiency: focused retrieval reduces broad, expensive model calls.
+5. Time efficiency: fewer context switches between IDE, docs, and external tools.
+6. Team consistency: role-aware guidance gives standardized, explainable responses across contributors.
+
+### High-impact extension scenarios
+
+1. "Where is this API actually used?" -> immediate symbol/file flow and edge context.
+2. "What changed impact for this function?" -> cross-file relations and focused graph reasoning.
+3. "How does auth/retrieval/orchestration work?" -> query-level visual map with grounded evidence.
+
+### Extension Roadmap
+
+Planned VS Code extension capabilities:
+
+1. Planned commands
+- `CODELENS: Ask About Selection`
+- `CODELENS: Build Focused Graph`
+- `CODELENS: Reindex Current Workspace`
+
+2. Planned sidebar views
+- Query History and Saved Insights
+- Graph Explorer (focused/full modes)
+- Evidence Panel (citations, confidence, edge context)
+
+3. Planned inline CodeLens actions
+- `Explain this symbol`
+- `Find callers and dependencies`
+- `Show impact graph`
+
 ## Query-Level Visualization Impact
 
 For each query, visualization improves decision quality:
