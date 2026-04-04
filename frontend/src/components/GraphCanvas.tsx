@@ -24,6 +24,37 @@ interface GraphCanvasProps {
 }
 
 const customNodeStyles = {
+  query: {
+    padding: '10px 14px',
+    borderRadius: '14px',
+    minWidth: 220,
+    maxWidth: 300,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#2d6cdf',
+    color: '#fff',
+    border: '2px solid rgba(255,255,255,0.28)',
+    boxShadow: '0 6px 16px rgba(0,0,0,0.45)',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    textAlign: 'center',
+  },
+  focus: {
+    padding: '8px 12px',
+    borderRadius: '12px',
+    minWidth: 140,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#7b4dff',
+    color: '#fff',
+    border: '2px solid rgba(255,255,255,0.25)',
+    boxShadow: '0 5px 14px rgba(0,0,0,0.42)',
+    fontSize: '0.68rem',
+    fontWeight: 700,
+    textAlign: 'center',
+  },
   file: {
     padding: '10px',
     borderRadius: '50%',
@@ -72,8 +103,9 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
 
     for (const n of rawNodes) {
       const nodeType = n.node_type || n.type || 'file';
-      const width = nodeType === 'file' ? 220 : 170;
-      const height = nodeType === 'file' ? 74 : 58;
+      const width =
+        nodeType === 'query' ? 280 : nodeType === 'focus' ? 170 : nodeType === 'file' ? 220 : 170;
+      const height = nodeType === 'query' ? 76 : nodeType === 'focus' ? 56 : nodeType === 'file' ? 74 : 58;
       g.setNode(n.id, { width, height, nodeType });
     }
 
@@ -104,7 +136,14 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
           reason: n.reason,
         },
         type: 'default',
-        style: nodeType === 'symbol' ? customNodeStyles.symbol : customNodeStyles.file,
+        style:
+          nodeType === 'query'
+            ? customNodeStyles.query
+            : nodeType === 'focus'
+              ? customNodeStyles.focus
+              : nodeType === 'symbol'
+                ? customNodeStyles.symbol
+                : customNodeStyles.file,
       } as Node;
     });
 

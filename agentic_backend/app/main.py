@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -561,13 +563,44 @@ def _build_focused_graph(
     )
     chunks = result.get("chunks", [])
 
+    if not path_prefix:
+        path_prefix = "src/"
+
+    def _is_low_signal_symbol(sym: dict) -> bool:
+        name = str(sym.get("name") or "").strip().lower()
+        symbol_type = str(sym.get("symbol_type") or "").strip().lower()
+        file_path = str(sym.get("file_path") or "").strip().lower()
+
+        if symbol_type == "import":
+            return True
+        if name in {"__init__", "main", "index"} and file_path.endswith(
+            ("/__init__.py", "/index.ts", "/index.tsx", "/index.js")
+        ):
+            return True
+        return False
+
     nodes: list[dict] = []
     edges: list[dict] = []
     node_ids: set[str] = set()
     symbol_ids: set[str] = set()
 
+    # Synthetic query node (AI-selected anchor) for focused graph readability.
+    qid = f"query::{hashlib.sha1(q.encode('utf-8')).hexdigest()[:12]}"
+    nodes.append(
+        {
+            "id": qid,
+            "label": q[:64] + ("..." if len(q) > 64 else ""),
+            "type": "query",
+            "relevance_score": float(result.get("confidence", 0.0)),
+            "reason": "query-anchor",
+        }
+    )
+    node_ids.add(qid)
+
     for c in chunks:
         file_path = c.get("file_path")
+        if path_prefix and file_path and not str(file_path).startswith(path_prefix):
+            continue
         if file_path and file_path not in node_ids:
             node_ids.add(file_path)
             nodes.append(
@@ -579,6 +612,8 @@ def _build_focused_graph(
                     "reason": c.get("reason", "retrieval"),
                 }
             )
+        if file_path:
+            edges.append({"source": qid, "target": file_path, "type": "focuses_on"})
 
         # Resolve nearby symbols in the same range
         if file_path:
@@ -601,6 +636,12 @@ def _build_focused_graph(
                 ).limit(20)
             )
             for s in syms:
+                if _is_low_signal_symbol(s):
+                    continue
+                if path_prefix and not str(s.get("file_path") or "").startswith(
+                    path_prefix
+                ):
+                    continue
                 sid = s.get("symbol_id")
                 if not sid:
                     continue
@@ -619,6 +660,26 @@ def _build_focused_graph(
                         }
                     )
                 edges.append({"source": file_path, "target": sid, "type": "contains"})
+
+                # Synthetic function-focus node for highly relevant chunks
+                if str(s.get("symbol_type") or "").lower() in {"function", "class"}:
+                    focus_id = f"focus::{sid}"
+                    if focus_id not in node_ids:
+                        node_ids.add(focus_id)
+                        nodes.append(
+                            {
+                                "id": focus_id,
+                                "label": f"{s.get('name')}()"
+                                if str(s.get("symbol_type") or "").lower() == "function"
+                                else str(s.get("name") or "symbol"),
+                                "type": "focus",
+                                "relevance_score": float(c.get("score", 0.0)) + 0.01,
+                                "reason": "ai-focus-node",
+                                "file_path": s.get("file_path"),
+                            }
+                        )
+                    edges.append({"source": qid, "target": focus_id, "type": "selects"})
+                    edges.append({"source": focus_id, "target": sid, "type": "maps_to"})
 
     if symbol_ids:
         for e in store.edges.find(
