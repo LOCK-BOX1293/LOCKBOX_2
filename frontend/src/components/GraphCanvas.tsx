@@ -11,7 +11,8 @@ import {
   Background,
   useNodesState,
   useEdgesState,
-  MarkerType
+  MarkerType,
+  type ReactFlowInstance
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -88,6 +89,7 @@ const customNodeStyles = {
 };
 
 export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }: GraphCanvasProps) {
+  const flowRef = React.useRef<ReactFlowInstance | null>(null);
   const layouted = useMemo(() => {
     const rawNodes = (data?.nodes || []) as any[];
     const rawEdges = (data?.edges || []) as any[];
@@ -185,6 +187,20 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
     setEdges(initialEdges);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
+  React.useEffect(() => {
+    if (!loading && flowRef.current) {
+      // Re-center graph when data changes so focused graph is visible immediately.
+      setTimeout(() => {
+        flowRef.current?.fitView({
+          padding: 0.25,
+          minZoom: 0.25,
+          maxZoom: 1.0,
+          includeHiddenNodes: false,
+        });
+      }, 0);
+    }
+  }, [loading, nodes.length, edges.length]);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       {loading && (
@@ -226,6 +242,9 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
       )}
 
       <ReactFlow
+        onInit={(instance) => {
+          flowRef.current = instance;
+        }}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
