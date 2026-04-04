@@ -20,7 +20,23 @@ This extension integrates VS Code with the local Hackbite FastAPI backend (`http
 1. Open this folder in VS Code: `LOCKBOX_2/hackbite-vscode`
 2. Run `npm install`
 3. Run `npm run compile`
-4. Press `F5` to launch Extension Development Host
+4. Press `F5` and choose `Run Hackbite Extension` to launch Extension Development Host
+
+## Where to run Hackbite commands
+
+Run commands in the Extension Development Host window (the second VS Code window opened by F5):
+
+- `Hackbite: Index Workspace`
+- `Hackbite: Ask a Question`
+- `Hackbite: Open Code Map`
+- `Hackbite: Show Logs`
+
+If `Hackbite` commands do not appear in Command Palette:
+
+1. Confirm you launched from `LOCKBOX_2/hackbite-vscode` (not repo root)
+2. Run `Developer: Reload Window` in the Extension Development Host
+3. Run `Hackbite: Show Logs` and check Output channel `Hackbite`
+4. In the original debug window, check `Run and Debug` is using `Run Hackbite Extension`
 
 ## Settings
 
