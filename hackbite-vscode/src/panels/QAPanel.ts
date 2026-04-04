@@ -120,14 +120,21 @@ export class QAPanel {
       function markdownToPlainText(value) {
         const src = String(value || '');
         return src
+          .replace(/\r/g, '')
           .replace(/\x60\x60\x60[\s\S]*?\x60\x60\x60/g, (m) => m.replace(/\x60\x60\x60/g, '').trim())
           .replace(/\x60([^\x60]+)\x60/g, '$1')
+          .replace(/!?\[([^\]]+)\]\(([^)]+)\)/g, '$1')
           .replace(/^#{1,6}\s+/gm, '')
+          .replace(/#{1,6}\s*/g, '')
           .replace(/^>\s?/gm, '')
           .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/__([^_]+)__/g, '$1')
           .replace(/\*([^*]+)\*/g, '$1')
+          .replace(/_([^_]+)_/g, '$1')
           .replace(/^\s*[-*+]\s+/gm, '')
           .replace(/^\s*\d+\.\s+/gm, '')
+          .replace(/[\t ]{2,}/g, ' ')
+          .replace(/[<>]/g, '')
           .replace(/\n{3,}/g, '\n\n')
           .trim();
       }

@@ -139,22 +139,26 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         return String(n.type || 'symbol');
       }
 
+      function nodeKey(id) {
+        return String(id || '');
+      }
+
       function selectNodeByData(n) {
         if (!n || !n.id) return;
-        selectedNodeId = n.id;
+        selectedNodeId = nodeKey(n.id);
         statusEl.textContent = 'Loading node details...';
         renderNodeList();
         updateActiveNodeStyles();
-        vscode.postMessage({ type: 'selectNode', nodeId: n.id, nodeType: nodeType(n) === 'file' ? 'file' : 'symbol' });
+        vscode.postMessage({ type: 'selectNode', nodeId: nodeKey(n.id), nodeType: nodeType(n) === 'file' ? 'file' : 'symbol' });
       }
 
       function findNodeByQuery(q) {
         const query = norm(q).trim();
         if (!query) return null;
         const nodes = graph.nodes || [];
-        const exact = nodes.find((n) => norm(n.id) === query || norm(getDisplayLabel(n)) === query);
+        const exact = nodes.find((n) => norm(nodeKey(n.id)) === query || norm(getDisplayLabel(n)) === query);
         if (exact) return exact;
-        return nodes.find((n) => norm(n.id).includes(query) || norm(getDisplayLabel(n)).includes(query));
+        return nodes.find((n) => norm(nodeKey(n.id)).includes(query) || norm(getDisplayLabel(n)).includes(query));
       }
 
       function renderGraph() {
@@ -180,28 +184,28 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         queryNodes.forEach((n, i) => {
           const x = FILE_X_START + (i * FILE_X_GAP * 1.2);
           const y = QUERY_Y;
-          positions.set(n.id, { x, y });
+          positions.set(nodeKey(n.id), { x, y });
         });
 
         files.forEach((n, i) => {
           const x = FILE_X_START + (i * FILE_X_GAP);
           const y = FILE_Y;
-          positions.set(n.id, { x, y });
+          positions.set(nodeKey(n.id), { x, y });
         });
 
         // Place focus nodes between query and symbols, near their mapped symbol if possible.
         focusNodes.forEach((n, i) => {
-          const outgoing = edges.find((e) => e.source === n.id && String(e.type || '').toLowerCase() === 'maps_to');
-          const mappedSymbolPos = outgoing ? positions.get(outgoing.target) : undefined;
+          const outgoing = edges.find((e) => nodeKey(e.source) === nodeKey(n.id) && String(e.type || '').toLowerCase() === 'maps_to');
+          const mappedSymbolPos = outgoing ? positions.get(nodeKey(outgoing.target)) : undefined;
           const fallbackX = FILE_X_START + (i * 150);
-          positions.set(n.id, { x: mappedSymbolPos ? mappedSymbolPos.x : fallbackX, y: FOCUS_Y });
+          positions.set(nodeKey(n.id), { x: mappedSymbolPos ? mappedSymbolPos.x : fallbackX, y: FOCUS_Y });
         });
 
         // Build symbol groups under their parent file when contains edge exists.
         const fileToSymbols = new Map();
         const unparentedSymbols = [];
         symbols.forEach((s) => {
-          const parentEdge = edges.find((e) => e.target === s.id && String(e.type || '').toLowerCase() === 'contains');
+          const parentEdge = edges.find((e) => nodeKey(e.target) === nodeKey(s.id) && String(e.type || '').toLowerCase() === 'contains');
           if (parentEdge && parentEdge.source) {
             const key = String(parentEdge.source);
             const arr = fileToSymbols.get(key) || [];
@@ -213,20 +217,20 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         });
 
         files.forEach((f) => {
-          const parentPos = positions.get(f.id);
+          const parentPos = positions.get(nodeKey(f.id));
           if (!parentPos) return;
-          const group = fileToSymbols.get(String(f.id)) || [];
+          const group = fileToSymbols.get(nodeKey(f.id)) || [];
           if (!group.length) return;
           const startX = parentPos.x - ((group.length - 1) * 62) / 2;
           group.forEach((s, idx) => {
-            positions.set(s.id, { x: startX + (idx * 62), y: SYMBOL_Y });
+            positions.set(nodeKey(s.id), { x: startX + (idx * 62), y: SYMBOL_Y });
           });
         });
 
         if (unparentedSymbols.length) {
           let baseX = FILE_X_START;
           unparentedSymbols.forEach((s, idx) => {
-            positions.set(s.id, { x: baseX + ((idx % 12) * 72), y: SYMBOL_Y + 110 + Math.floor(idx / 12) * 80 });
+            positions.set(nodeKey(s.id), { x: baseX + ((idx % 12) * 72), y: SYMBOL_Y + 110 + Math.floor(idx / 12) * 80 });
           });
         }
 
@@ -242,27 +246,49 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         edgeSvg.setAttribute('width', String(canvasW));
         edgeSvg.setAttribute('height', String(canvasH));
 
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        marker.setAttribute('id', 'arrow-head');
+        marker.setAttribute('viewBox', '0 0 10 10');
+        marker.setAttribute('refX', '9');
+        marker.setAttribute('refY', '5');
+        marker.setAttribute('markerWidth', '7');
+        marker.setAttribute('markerHeight', '7');
+        marker.setAttribute('orient', 'auto-start-reverse');
+        const markerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        markerPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+        markerPath.setAttribute('fill', 'rgba(224,232,255,0.88)');
+        marker.appendChild(markerPath);
+        defs.appendChild(marker);
+        edgeSvg.appendChild(defs);
+
         edges.forEach((e) => {
-          const p1 = positions.get(e.source);
-          const p2 = positions.get(e.target);
+          const p1 = positions.get(nodeKey(e.source));
+          const p2 = positions.get(nodeKey(e.target));
           if (!p1 || !p2) return;
-          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          line.setAttribute('x1', String(p1.x));
-          line.setAttribute('y1', String(p1.y));
-          line.setAttribute('x2', String(p2.x));
-          line.setAttribute('y2', String(p2.y));
+
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const curve = Math.max(12, Math.min(70, Math.abs(dx) * 0.12));
+          const cx = p1.x + (dx / 2);
+          const cy = p1.y + (dy / 2) - (dy === 0 ? curve : curve * Math.sign(dy));
+
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', 'M ' + p1.x + ' ' + p1.y + ' Q ' + cx + ' ' + cy + ' ' + p2.x + ' ' + p2.y);
           const relation = String(e.type || '').toLowerCase();
-          line.setAttribute('stroke', relation === 'contains' ? 'rgba(181,199,255,0.55)' : 'rgba(255,255,255,0.22)');
-          line.setAttribute('stroke-width', relation === 'contains' ? '1.5' : '1.0');
+          path.setAttribute('stroke', relation === 'contains' ? 'rgba(181,199,255,0.75)' : 'rgba(255,255,255,0.5)');
+          path.setAttribute('stroke-width', relation === 'contains' ? '1.8' : '1.3');
+          path.setAttribute('fill', 'none');
+          path.setAttribute('marker-end', 'url(#arrow-head)');
           if (relation !== 'contains') {
-            line.setAttribute('stroke-dasharray', '4 4');
+            path.setAttribute('stroke-dasharray', '5 4');
           }
-          edgeSvg.appendChild(line);
+          edgeSvg.appendChild(path);
 
           if (relation) {
             const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.setAttribute('x', String((p1.x + p2.x) / 2));
-            label.setAttribute('y', String((p1.y + p2.y) / 2 - 6));
+            label.setAttribute('x', String(cx));
+            label.setAttribute('y', String(cy - 6));
             label.setAttribute('fill', 'rgba(255,255,255,0.82)');
             label.setAttribute('font-size', '10');
             label.setAttribute('text-anchor', 'middle');
@@ -272,15 +298,15 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         });
 
         nodes.forEach((n) => {
-          const pos = positions.get(n.id);
+          const pos = positions.get(nodeKey(n.id));
           if (!pos) return;
           const node = document.createElement('div');
           const t = nodeType(n);
           node.className = 'node ' + t;
-          node.dataset.nodeId = String(n.id);
+          node.dataset.nodeId = nodeKey(n.id);
           node.style.left = pos.x + 'px';
           node.style.top = pos.y + 'px';
-          node.title = esc(n.id || '');
+          node.title = esc(nodeKey(n.id) || '');
           node.textContent = esc(getDisplayLabel(n).slice(0, 36));
           node.onclick = () => selectNodeByData(n);
           mapEl.appendChild(node);
@@ -304,7 +330,7 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         const nodes = (graph.nodes || [])
           .filter((n) => {
             if (!q) return true;
-            return norm(n.id).includes(q) || norm(getDisplayLabel(n)).includes(q);
+            return norm(nodeKey(n.id)).includes(q) || norm(getDisplayLabel(n)).includes(q);
           })
           .sort((a, b) => {
             const at = nodeType(a) === 'file' ? 0 : 1;
@@ -316,8 +342,8 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
 
         leftMetaEl.textContent = nodes.length + ' visible nodes';
         nodeListEl.innerHTML = nodes.map((n) => {
-          const active = String(n.id) === String(selectedNodeId || '');
-          return '<div class="nodeItem ' + (active ? 'active' : '') + '" data-id="' + esc(n.id) + '">'
+          const active = nodeKey(n.id) === String(selectedNodeId || '');
+          return '<div class="nodeItem ' + (active ? 'active' : '') + '" data-id="' + esc(nodeKey(n.id)) + '">'
             + '<div>' + esc(getDisplayLabel(n)) + '</div>'
             + '<div class="nodeType">' + esc(nodeType(n)) + '</div>'
             + '</div>';
@@ -326,7 +352,7 @@ function getGraphHtml(graph: { nodes: Array<Record<string, unknown>>; edges: Arr
         nodeListEl.querySelectorAll('.nodeItem').forEach((el) => {
           el.addEventListener('click', () => {
             const id = el.getAttribute('data-id');
-            const node = (graph.nodes || []).find((n) => String(n.id) === String(id));
+            const node = (graph.nodes || []).find((n) => nodeKey(n.id) === String(id));
             selectNodeByData(node);
           });
         });
