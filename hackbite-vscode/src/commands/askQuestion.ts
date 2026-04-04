@@ -4,17 +4,17 @@ import { retrieveQuery } from "../api/retrieveApi";
 import { QAResponse, RetrieveResponse } from "../api/types";
 import { getHackbiteConfig } from "../config";
 import { QAPanel } from "../panels/QAPanel";
-import { detectRepoIdentity, getPrimaryWorkspaceFolder } from "../utils/repoDetect";
+import { detectRepoIdentityFromPath, getConfiguredOrWorkspaceRepoPath } from "../utils/repoDetect";
 
 export function createAskQuestionCommand(extensionUri: vscode.Uri): (prefilledQuestion?: string) => Promise<void> {
   return async (prefilledQuestion?: string) => {
-    const folder = getPrimaryWorkspaceFolder();
-    if (!folder) {
+    const repoPath = getConfiguredOrWorkspaceRepoPath();
+    if (!repoPath) {
       vscode.window.showWarningMessage("Hackbite: Open a workspace folder first.");
       return;
     }
 
-    const identity = await detectRepoIdentity(folder);
+    const identity = await detectRepoIdentityFromPath(repoPath);
     const editor = vscode.window.activeTextEditor;
     const selectedText = editor?.document.getText(editor.selection)?.trim();
 

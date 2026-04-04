@@ -2,7 +2,7 @@
   "name": "hackbite-vscode",
   "displayName": "Hackbite",
   "description": "Hackbite VS Code client for indexing, retrieval, and code graph workflows",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "hackbite",
   "engines": {
     "vscode": "^1.80.0"
@@ -44,6 +44,14 @@
       {
         "command": "hackbite.showLogs",
         "title": "Hackbite: Show Logs"
+      },
+      {
+        "command": "hackbite.selectRepo",
+        "title": "Hackbite: Select Target Repository"
+      },
+      {
+        "command": "hackbite.clearRepoSelection",
+        "title": "Hackbite: Use Workspace Repository"
       }
     ],
     "keybindings": [
@@ -68,6 +76,11 @@
           "type": "string",
           "default": "main",
           "description": "Default git branch if branch auto-detection fails"
+        },
+        "hackbite.targetRepoPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to the repository you want Hackbite to index and query"
         },
         "hackbite.autoIndex": {
           "type": "boolean",

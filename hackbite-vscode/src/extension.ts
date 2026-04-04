@@ -3,11 +3,12 @@ import { healthCheck, indexIncremental } from "./api/indexApi";
 import { createAskQuestionCommand } from "./commands/askQuestion";
 import { createIndexWorkspaceCommand, hasSuccessfulIndex } from "./commands/indexWorkspace";
 import { createOpenGraphCommand } from "./commands/openGraph";
+import { createClearRepoSelectionCommand, createSelectRepoCommand } from "./commands/selectRepo";
 import { getHackbiteConfig } from "./config";
 import { HackbiteCodeLensProvider } from "./providers/CodeLensProvider";
 import { HackbiteHoverProvider } from "./providers/HoverProvider";
 import { SymbolTreeProvider, revealSymbol } from "./providers/SymbolTreeProvider";
-import { detectRepoIdentity, getPrimaryWorkspaceFolder } from "./utils/repoDetect";
+import { detectRepoIdentityFromPath, getConfiguredOrWorkspaceRepoPath, getPrimaryWorkspaceFolder } from "./utils/repoDetect";
 import { HackbiteStatusBar } from "./utils/statusBar";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -36,7 +37,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand("hackbite.openGraph", createOpenGraphCommand())
   );
+  context.subscriptions.push(vscode.commands.registerCommand("hackbite.selectRepo", createSelectRepoCommand()));
+  context.subscriptions.push(vscode.commands.registerCommand("hackbite.clearRepoSelection", createClearRepoSelectionCommand()));
   output.appendLine('Registered command: hackbite.openGraph');
+  output.appendLine('Registered command: hackbite.selectRepo');
+  output.appendLine('Registered command: hackbite.clearRepoSelection');
   context.subscriptions.push(vscode.commands.registerCommand('hackbite.showLogs', () => output.show(true)));
   output.appendLine('Registered command: hackbite.showLogs');
 
@@ -103,13 +108,13 @@ async function initializeStatus(statusBar: HackbiteStatusBar): Promise<void> {
 }
 
 async function maybeAutoIndex(statusBar: HackbiteStatusBar): Promise<void> {
-  const folder = getPrimaryWorkspaceFolder();
-  if (!folder) {
+  const repoPath = getConfiguredOrWorkspaceRepoPath();
+  if (!repoPath) {
     return;
   }
 
   try {
-    const identity = await detectRepoIdentity(folder);
+    const identity = await detectRepoIdentityFromPath(repoPath);
     const hasIndex = await hasSuccessfulIndex(identity.repoId);
     if (!hasIndex) {
       await vscode.commands.executeCommand("hackbite.indexWorkspace");
@@ -122,13 +127,13 @@ async function maybeAutoIndex(statusBar: HackbiteStatusBar): Promise<void> {
 }
 
 async function runIncrementalIndex(statusBar: HackbiteStatusBar): Promise<void> {
-  const folder = getPrimaryWorkspaceFolder();
-  if (!folder) {
+  const repoPath = getConfiguredOrWorkspaceRepoPath();
+  if (!repoPath) {
     return;
   }
 
   try {
-    const identity = await detectRepoIdentity(folder);
+    const identity = await detectRepoIdentityFromPath(repoPath);
     statusBar.setIndexing("Incremental...");
     await indexIncremental({
       repo_path: identity.repoPath,

@@ -5,12 +5,14 @@ This extension integrates VS Code with the local Hackbite FastAPI backend (`http
 ## Implemented now
 
 - `Hackbite: Index Workspace` command
-- `Hackbite: Ask a Question` webview panel (retrieval chunks + confidence)
+- `Hackbite: Ask a Question` webview panel with final answer + citations + evidence
 - CodeLens `Ask Hackbite` above functions/classes in supported languages
 - Hover summaries (one-line, cached) for symbols in supported languages
 - Sidebar `Hackbite -> Code Symbols` tree (file -> symbol) with click-to-reveal
-- `Hackbite: Open Code Map` basic graph overview panel
+- `Hackbite: Open Code Map` interactive graph panel with node details + focused query
 - Auto repo detection from git origin URL (stable hashed repo id)
+- `Hackbite: Select Target Repository` lets users index/ask any local repo path
+- `Hackbite: Use Workspace Repository` clears explicit target path
 - Status bar states for indexing and backend availability
 - Optional auto-index on startup when no successful index exists
 - Debounced incremental indexing on file save (`hackbite.autoIndex=true`)
@@ -38,6 +40,8 @@ Run commands in the Extension Development Host window (the second VS Code window
 - `Hackbite: Index Workspace`
 - `Hackbite: Ask a Question`
 - `Hackbite: Open Code Map`
+- `Hackbite: Select Target Repository`
+- `Hackbite: Use Workspace Repository`
 - `Hackbite: Show Logs`
 
 If `Hackbite` commands do not appear in Command Palette:
@@ -53,7 +57,27 @@ Note: backend is not required for commands to appear. Backend is required only f
 
 - `hackbite.backendUrl` (default `http://localhost:8081`)
 - `hackbite.repoBranch` (default `main`)
+- `hackbite.targetRepoPath` (default empty; when set, commands use this repo path)
 - `hackbite.autoIndex` (default `false`)
 - `hackbite.indexTimeoutMs` (default `600000`)
 - `hackbite.role`
 - `hackbite.apiKey` (optional)
+
+## For Other Users
+
+Package and share VSIX:
+
+```powershell
+cd C:\Users\Tanmay\Desktop\Hackbyte\LOCKBOX_2\hackbite-vscode
+npm install
+npm run compile
+npx @vscode/vsce package --allow-missing-repository --allow-star-activation
+```
+
+Install VSIX in VS Code:
+
+```powershell
+code --install-extension .\hackbite-vscode-0.0.4.vsix --force
+```
+
+Runtime requirement for users: backend API should run separately (for example from `LOCKBOX_2/agentic_backend`) and be reachable via `hackbite.backendUrl`.

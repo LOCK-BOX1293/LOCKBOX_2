@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getJobs } from "../api/jobsApi";
 import { healthCheck, indexFull } from "../api/indexApi";
-import { detectRepoIdentity, getPrimaryWorkspaceFolder } from "../utils/repoDetect";
+import { detectRepoIdentityFromPath, getConfiguredOrWorkspaceRepoPath } from "../utils/repoDetect";
 import { HackbiteStatusBar } from "../utils/statusBar";
 
 export interface IndexContext {
@@ -10,13 +10,13 @@ export interface IndexContext {
 
 export function createIndexWorkspaceCommand(ctx: IndexContext): () => Promise<void> {
   return async () => {
-    const folder = getPrimaryWorkspaceFolder();
-    if (!folder) {
+    const repoPath = getConfiguredOrWorkspaceRepoPath();
+    if (!repoPath) {
       vscode.window.showWarningMessage("Hackbite: Open a workspace folder first.");
       return;
     }
 
-    const identity = await detectRepoIdentity(folder);
+    const identity = await detectRepoIdentityFromPath(repoPath);
 
     ctx.statusBar.setIndexing();
 
