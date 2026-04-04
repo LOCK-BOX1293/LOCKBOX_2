@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import certifi
 from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.collection import Collection
 
 
 class MongoStore:
     def __init__(self, uri: str, db_name: str) -> None:
-        self.client = MongoClient(uri)
+        self.client = MongoClient(uri, tlsCAFile=certifi.where())
         self.db = self.client[db_name]
 
     @property
