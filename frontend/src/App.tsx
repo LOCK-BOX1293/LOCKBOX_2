@@ -59,7 +59,9 @@ function App() {
     try {
       setLoading(true);
       const activeRepo = selectedRepo || repoId;
-      const data = await fetchGraphOverview(activeRepo, branch, mode, forcedQuery || query, includeTests);
+      const q = (forcedQuery || query || '').trim();
+      const requestedMode = mode === 'focused' && !q ? 'full' : mode;
+      const data = await fetchGraphOverview(activeRepo, branch, requestedMode, q, includeTests);
       setGraphData(data);
       setSelectedNodeId(null);
       setPanelData(null);
@@ -91,12 +93,9 @@ function App() {
         query_structure: structure,
       });
 
-      if (ask?.graph?.nodes && ask?.graph?.edges) {
-        setGraphData({ nodes: ask.graph.nodes, edges: ask.graph.edges });
-      } else {
-        const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query, includeTests);
-        setGraphData(focused);
-      }
+      // Always render graph from focused retrieval endpoint for stability and deterministic node set.
+      const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query, includeTests);
+      setGraphData(focused);
 
       setMode('focused');
     } catch (e) {
@@ -233,6 +232,12 @@ function App() {
       {repoError && (
         <div style={{ padding: '8px 16px', color: '#ff8a80', borderBottom: '1px solid var(--border-color)', fontSize: 13 }}>
           {repoError}
+        </div>
+      )}
+
+      {!repoError && (
+        <div style={{ padding: '6px 16px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', fontSize: 12 }}>
+          nodes: {graphData.nodes.length} | edges: {graphData.edges.length} | mode: {mode}
         </div>
       )}
 

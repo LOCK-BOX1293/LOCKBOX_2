@@ -81,7 +81,12 @@ export async function fetchGraphOverview(repoId: string, branch: string = 'main'
   }
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error('Failed to fetch overview');
-  return res.json();
+  const data = await res.json();
+  return {
+    nodes: Array.isArray(data?.nodes) ? data.nodes : [],
+    edges: Array.isArray(data?.edges) ? data.edges : [],
+    meta: data?.meta || {},
+  };
 }
 
 export async function fetchNodeDetails(nodeId: string, repoId: string, type: 'file' | 'symbol', branch: string = 'main') {

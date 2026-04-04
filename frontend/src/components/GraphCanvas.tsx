@@ -87,7 +87,8 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
 
     const positionedNodes = rawNodes.map((n: any) => {
       const nodeType = n.node_type || n.type || 'file';
-      const label = n.label || n.name || n.id;
+      const fullLabel = n.label || n.name || n.id;
+      const shortLabel = String(fullLabel).split('/').slice(-1)[0];
       const dims = g.node(n.id) || { x: 0, y: 0, width: 180, height: 60 };
       return {
         id: n.id,
@@ -96,7 +97,8 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
           y: (dims.y || 0) - (dims.height || 60) / 2,
         },
         data: {
-          label,
+          label: shortLabel,
+          fullLabel,
           type: nodeType,
           score: n.relevance_score,
           reason: n.reason,
@@ -194,6 +196,9 @@ export function GraphCanvas({ data, onNodeClick, onEdgeClick, loading = false }:
         fitView
         minZoom={0.2}
         maxZoom={1.4}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+        nodeDragThreshold={2}
+        edgesReconnectable={false}
         fitViewOptions={{
           padding: 0.25,
           minZoom: 0.25,
