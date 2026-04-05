@@ -48,19 +48,19 @@ This architecture improves modularity, debugging visibility, and future scalabil
 
 ## Agentic Workflow Demonstration
 ```mermaid
-graph TD
-    A[User Query] --> B[Orchestrator]
-    B --> C[Memory Agent]
-    C --> D[Vector Embedding Generation]
-    D --> E[Semantic Search Execution]
-    E --> F[Relevant Code Snippets]
+flowchart TD
+    A["User Query"] --> B["Orchestrator"]
+    B --> C["Memory Agent"]
+    C --> D["Vector Embedding Generation"]
+    D --> E["Semantic Search Execution"]
+    E --> F["Relevant Code Snippets"]
     F --> B
-    B --> G[Role Prompter]
-    G --> H[Role-Based Context Analysis]
-    H --> I[Gemini API Integration]
-    I --> J[Intelligent Response Generation]
+    B --> G["Role Prompter"]
+    G --> H["Role Based Context Analysis"]
+    H --> I["Gemini API Integration"]
+    I --> J["Intelligent Response Generation"]
     J --> B
-    B --> K[Orchestrated Final Response]
+    B --> K["Orchestrated Final Response"]
 ```
 
 ## VS Code Extension Usage
