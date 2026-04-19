@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { GraphCanvas } from './components/GraphCanvas';
+import { QueryTraceBoard, type TraceNode, type TraceEdge } from './components/QueryTraceBoard';
 import { InspectorPanel } from './components/InspectorPanel';
 import { fetchGraphOverview, fetchNodeDetails, fetchEdgeContext, askQuestion, fetchRepos, runFullIndex, getResolvedApiBase } from './api';
+
+type QuerySession = {
+  id: string;
+  query: string;
+  answer: any;
+  trace: any;
+};
 
 function markdownToPlainText(value: string): string {
   const src = String(value || '').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
@@ -32,6 +40,8 @@ function App() {
   const [role, setRole] = useState<'backend' | 'frontend' | 'security' | 'architect' | 'debugger'>('backend');
   const [graphData, setGraphData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
   const [answerData, setAnswerData] = useState<any>(null);
+  const [querySessions, setQuerySessions] = useState<QuerySession[]>([]);
+  const [activeQuerySessionId, setActiveQuerySessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
   // Right panel states
@@ -49,6 +59,7 @@ function App() {
   const [includeTests, setIncludeTests] = useState(false);
 
   const activeRepo = selectedRepo || repoId;
+  const activeQuerySession = querySessions.find((session) => session.id === activeQuerySessionId) || null;
 
   const loadRepos = async () => {
     try {
@@ -69,10 +80,11 @@ function App() {
     }
   };
 
-  // Load initial graph
+  // Load graph for browsing mode only. Query mode manages its own trace graph.
   useEffect(() => {
-    if (selectedRepo) loadGraph();
-  }, [mode]);
+    if (selectedRepo && !answerData) loadGraph();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, selectedRepo, answerData]);
 
   useEffect(() => {
     loadRepos();
@@ -114,12 +126,25 @@ function App() {
         note_summary: `Intent: ${structure.intent}. Confidence: ${structure.confidence.toFixed(2)}. Citations: ${structure.citations}.`,
         query_structure: structure,
       });
+      const traceGraph = {
+        ...ask?.graph,
+        nodes: Array.isArray(ask?.graph?.nodes) ? ask.graph.nodes : [],
+        edges: Array.isArray(ask?.graph?.edges) ? ask.graph.edges : [],
+        meta: ask?.graph?.meta || {},
+      };
+      const nextSession: QuerySession = {
+        id: String(ask?.graph?.run_id || `${Date.now()}-${query}`),
+        query,
+        answer: {
+          ...ask,
+          note_summary: `Intent: ${structure.intent}. Confidence: ${structure.confidence.toFixed(2)}. Citations: ${structure.citations}.`,
+          query_structure: structure,
+        },
+        trace: traceGraph,
+      };
 
-      // Always render graph from focused retrieval endpoint for stability and deterministic node set.
-      const focused = await fetchGraphOverview(activeRepo, branch, 'focused', query, includeTests);
-      setGraphData(focused);
-
-      setMode('focused');
+      setQuerySessions((prev) => [nextSession, ...prev.filter((session) => session.id !== nextSession.id)].slice(0, 8));
+      setActiveQuerySessionId(nextSession.id);
     } catch (e) {
       console.error('Failed to ask backend', e);
       // fallback focused graph for resilience
@@ -176,6 +201,108 @@ function App() {
     }
   };
 
+  const buildTraceNodePanel = async (node: TraceNode) => {
+    setSelectedNodeId(node.id);
+
+    if (node.type === 'file' && node.meta?.file_path) {
+      try {
+        const data = await fetchNodeDetails(node.meta.file_path, activeRepo, 'file', branch);
+        setPanelData({
+          ...data,
+          title: node.display_label || node.label,
+          file_path: node.meta.file_path,
+          note_summary: `Trace node from query "${activeQuerySession?.query || query}".`,
+          query_structure: {
+            trace_node_id: node.id,
+            type: node.type,
+            stage: node.stage,
+            relation_role: node.reason,
+            relevance_score: node.relevance_score,
+            meta: node.meta || {},
+          },
+          key_points: [node.reason || 'Trace file node', `stage: ${node.stage || 'unknown'}`],
+        });
+        return;
+      } catch (e) {
+        console.error('Failed to enrich trace file node details', e);
+      }
+    }
+
+    setPanelData({
+      title: node.display_label || node.label,
+      file_path: node.meta?.file_path || `trace/${node.stage || node.type || 'node'}`,
+      functions: [],
+      code: node.type === 'answer' ? answerData?.answer || '' : JSON.stringify(node.meta || {}, null, 2),
+      key_points: [node.reason || 'Trace node', `stage: ${node.stage || 'unknown'}`, `type: ${node.type || 'unknown'}`],
+      note_summary: `Trace node selected from query session "${activeQuerySession?.query || query}".`,
+      query_structure: {
+        trace_node_id: node.id,
+        type: node.type,
+        stage: node.stage,
+        relevance_score: node.relevance_score,
+        meta: node.meta || {},
+      },
+    });
+  };
+
+  const buildTraceEdgePanel = (payload: { edge: TraceEdge; sourceNode?: TraceNode; targetNode?: TraceNode }) => {
+    const { edge, sourceNode, targetNode } = payload;
+    const sourceTitle = sourceNode?.display_label || sourceNode?.label || edge.source;
+    const targetTitle = targetNode?.display_label || targetNode?.label || edge.target;
+
+    setSelectedNodeId(`${sourceTitle} -> ${targetTitle}`);
+    setPanelData({
+      title: edge.type || 'trace link',
+      file_path: `${sourceTitle} -> ${targetTitle}`,
+      edge_context: `Connection code: ${edge.type || 'flows_to'}. This link connects ${sourceTitle} to ${targetTitle}.`,
+      edge_code_snippet: JSON.stringify(
+        {
+          relation: edge.type || 'flows_to',
+          source: {
+            id: sourceNode?.id || edge.source,
+            type: sourceNode?.type,
+            stage: sourceNode?.stage,
+            file_path: sourceNode?.meta?.file_path || null,
+          },
+          target: {
+            id: targetNode?.id || edge.target,
+            type: targetNode?.type,
+            stage: targetNode?.stage,
+            file_path: targetNode?.meta?.file_path || null,
+          },
+        },
+        null,
+        2,
+      ),
+      note_summary: `Trace link selected from query session "${activeQuerySession?.query || query}".`,
+      query_structure: {
+        relation: edge.type || 'flows_to',
+        source: sourceNode?.id || edge.source,
+        target: targetNode?.id || edge.target,
+      },
+      edge: {
+        source: sourceNode?.id || edge.source,
+        target: targetNode?.id || edge.target,
+        edge_type: edge.type || 'flows_to',
+      },
+      from: {
+        file_path: sourceNode?.meta?.file_path || sourceTitle,
+        symbol_id: sourceNode?.id,
+        code: JSON.stringify(sourceNode?.meta || {}, null, 2),
+      },
+      to: {
+        file_path: targetNode?.meta?.file_path || targetTitle,
+        symbol_id: targetNode?.id,
+        code: JSON.stringify(targetNode?.meta || {}, null, 2),
+      },
+      key_points: [
+        `Initial document/node: ${sourceTitle}`,
+        `Final document/node: ${targetTitle}`,
+        `Connection code: ${edge.type || 'flows_to'}`,
+      ],
+    });
+  };
+
   return (
     <div className="layout-container">
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -187,6 +314,8 @@ function App() {
             setSelectedRepo(e.target.value || null);
             setMode('full');
             setAnswerData(null);
+            setQuerySessions([]);
+            setActiveQuerySessionId(null);
             setSelectedNodeId(null);
             setPanelData(null);
             setTimeout(() => loadGraph(), 0);
@@ -271,7 +400,11 @@ function App() {
 
       <Toolbar 
         mode={mode} 
-        setMode={setMode} 
+        setMode={(nextMode) => {
+          setMode(nextMode);
+          setAnswerData(null);
+          setActiveQuerySessionId(null);
+        }}
         query={query} 
         setQuery={setQuery} 
         role={role}
@@ -279,30 +412,67 @@ function App() {
         onSearch={handleSearch} 
       />
       {answerData && (
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Query Note ({answerData.intent})</div>
-          <div style={{ fontSize: '0.92rem', whiteSpace: 'pre-wrap' }}>{answerData.note_summary || answerData.answer}</div>
-          <details style={{ marginTop: 8 }}>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View full answer text</summary>
-            <div style={{ fontSize: '0.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', marginTop: 8 }}>{markdownToPlainText(answerData.answer || '')}</div>
+        <div className="query-response-strip">
+          <div className="query-response-head">
+            <div className="query-response-title">AI Response ({answerData.intent})</div>
+            <div className="query-response-meta">
+              confidence: {Number(answerData.confidence || 0).toFixed(2)} | citations: {Array.isArray(answerData.citations) ? answerData.citations.length : 0}
+            </div>
+          </div>
+          <div className="query-response-body">{answerData.note_summary || answerData.answer}</div>
+          <details className="query-response-details">
+            <summary>View full answer text</summary>
+            <div className="query-response-full">{markdownToPlainText(answerData.answer || '')}</div>
           </details>
-          <details style={{ marginTop: 8 }}>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>View query structure</summary>
+          <details className="query-response-details">
+            <summary>View query structure</summary>
             <pre className="code-block" style={{ marginTop: 8 }}><code>{JSON.stringify(answerData.query_structure || {}, null, 2)}</code></pre>
           </details>
-          <div style={{ marginTop: 8, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <div className="query-response-meta">
             confidence: {Number(answerData.confidence || 0).toFixed(2)} | citations: {Array.isArray(answerData.citations) ? answerData.citations.length : 0}
           </div>
         </div>
       )}
       <div className="workspace">
         <div className="graph-canvas">
-          <GraphCanvas 
-            data={graphData} 
-            onNodeClick={handleNodeClick}
-            onEdgeClick={handleEdgeClick}
-            loading={loading}
-          />
+          {activeQuerySession ? (
+            <div className="query-trace-layout">
+              <aside className="query-trace-sidebar">
+                <div className="query-trace-sidebar-label">Recent Query Sessions</div>
+                {querySessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    className={`query-trace-session-tab ${session.id === activeQuerySession.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveQuerySessionId(session.id);
+                      setAnswerData(session.answer);
+                    }}
+                  >
+                    <div className="query-trace-session-title">{session.query}</div>
+                    <div className="query-trace-session-meta">
+                      confidence {Number(session.answer?.confidence || 0).toFixed(2)}
+                    </div>
+                  </button>
+                ))}
+              </aside>
+
+              <QueryTraceBoard
+                trace={activeQuerySession.trace}
+                query={activeQuerySession.query}
+                answer={activeQuerySession.answer?.answer || ''}
+                onNodeSelect={buildTraceNodePanel}
+                onEdgeSelect={buildTraceEdgePanel}
+              />
+            </div>
+          ) : (
+            <GraphCanvas 
+              data={graphData} 
+              onNodeClick={handleNodeClick}
+              onEdgeClick={handleEdgeClick}
+              loading={loading}
+            />
+          )}
         </div>
         {selectedNodeId && (
           <InspectorPanel 

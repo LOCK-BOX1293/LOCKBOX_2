@@ -43,7 +43,19 @@ class LocalHybridRetrievalProvider(RetrievalProvider):
     def __init__(self) -> None:
         settings = get_settings()
         store = MongoStore(settings.mongodb_uri, settings.mongodb_db)
+        self.store = store
         self.hybrid = HybridRetriever(settings=settings, store=store)
+
+    def _preferred_prefix(self, project_id: str) -> str | None:
+        has_src = self.store.files.find_one(
+            {
+                "repo_id": project_id,
+                "branch": {"$in": ["main", "master"]},
+                "file_path": {"$regex": r"^src/"},
+            },
+            {"_id": 1},
+        )
+        return "src/" if has_src else None
 
     def retrieve(
         self,
@@ -54,15 +66,26 @@ class LocalHybridRetrievalProvider(RetrievalProvider):
         path_prefix: str | None = None,
         include_tests: bool = False,
     ) -> RetrievalResult:
+        prefix = path_prefix or self._preferred_prefix(project_id)
         payload = self.hybrid.query(
             repo_id=project_id,
             branch=branch,
             q=query,
             top_k=top_k,
-            path_prefix=path_prefix,
+            path_prefix=prefix,
             include_tests=include_tests,
             include_graph=True,
         )
+        if not payload.get("chunks") and prefix:
+            payload = self.hybrid.query(
+                repo_id=project_id,
+                branch=branch,
+                q=query,
+                top_k=top_k,
+                path_prefix=None,
+                include_tests=include_tests,
+                include_graph=True,
+            )
         chunks = [
             RetrievedChunk(
                 chunk_id=c.get("chunk_id", ""),

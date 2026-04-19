@@ -31,7 +31,7 @@ class Orchestrator:
             api_key=settings.gemini_api_key, model=settings.gemini_model
         )
         self.explainer = ExplanationAgent(self.llm)
-        self.visual_mapper = VisualMapperAgent()
+        self.visual_mapper = VisualMapperAgent(self.llm)
         self.retrieval: RetrievalProvider = (
             HttpRetrievalProvider(settings.retrieval_service_url)
             if settings.retrieval_service_url
@@ -101,7 +101,16 @@ class Orchestrator:
         answer, confidence, citations = parse_answer_payload(
             raw_answer, retrieval_result.chunks
         )
-        graph = self.visual_mapper.build_graph(retrieval_result.chunks)
+        graph = self.visual_mapper.build_query_trace(
+            query=req.query,
+            user_role=req.user_role,
+            chunks=retrieval_result.chunks,
+            answer=answer,
+            confidence=confidence,
+            citations=citations,
+            session_id=req.session_id,
+            intent=intent,
+        )
 
         self.sessions.append_event(
             SessionEvent(

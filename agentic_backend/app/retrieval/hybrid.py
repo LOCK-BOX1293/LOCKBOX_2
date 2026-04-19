@@ -65,6 +65,7 @@ class HybridRetriever:
                     "start_line": r["start_line"],
                     "end_line": r["end_line"],
                     "content": r["content"],
+                    "symbol_refs": r.get("symbol_refs", []),
                     "score": round(float(r["score"]), 6),
                     "reason": r["reason"],
                 }
@@ -113,6 +114,20 @@ class HybridRetriever:
                 "cd",
             }
         )
+        pipeline_query = any(
+            t in q_terms
+            for t in {
+                "pipeline",
+                "flow",
+                "fallback",
+                "scrape",
+                "coverage",
+                "verify",
+                "claim",
+                "research",
+                "news",
+            }
+        )
 
         # Give strong boosts for literal query token overlap in path/content,
         # helps large repos surface exact call-chain chunks.
@@ -157,6 +172,20 @@ class HybridRetriever:
                     and not mentions_docs
                 ):
                     bonus -= 0.04
+
+            if pipeline_query:
+                if "/prompts/" in path and "prompt" not in q_terms:
+                    bonus -= 0.05
+                if "/output/" in path or path.endswith(".json"):
+                    bonus -= 0.07
+                if "/models.py" in path:
+                    bonus -= 0.03
+                if "/clients/" in path:
+                    bonus += 0.03
+                if "/services/" in path or "run_pipeline.py" in path:
+                    bonus += 0.05
+                if "/scrapers/" in path:
+                    bonus += 0.03
 
             if self._is_test_path(path) and not mentions_tests:
                 bonus -= 0.07
